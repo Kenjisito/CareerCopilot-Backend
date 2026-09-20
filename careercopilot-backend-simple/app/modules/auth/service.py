@@ -1,49 +1,34 @@
-from sqlalchemy.orm import Session
+from uuid import UUID
 
-from app.core.security import create_access_token, hash_password, verify_password
-from app.db.models import User
-from app.modules.auth.schemas import LoginPayload, RegisterPayload, UserOut
-from app.shared.errors import conflict, unauthorized
+from fastapi import HTTPException, status
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-
-def _to_user_out(user: User) -> UserOut:
-    """Traduce el modelo ORM (snake_case) al schema que espera el frontend
-    (camelCase, ver frontend/types/user.ts)."""
-    return UserOut(
-        id=user.id,
-        email=user.email,
-        fullName=user.full_name,
-        avatarUrl=user.avatar_url,
-        role=user.role,
-        createdAt=user.created_at,
-    )
+from app.core.supabase import supabase_admin_client
+from app.db.models import CVModel, EmailGenerated, EntrevistaModel, JobMatchModel, UsuarioModel
 
 
-def register(db: Session, payload: RegisterPayload) -> tuple[str, UserOut]:
-    existing = db.query(User).filter(User.email == payload.email).first()
-    if existing:
-        raise conflict("Ya existe una cuenta con ese correo")
+class AuthService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
 
-    if not payload.password:
-        raise conflict("La contraseña es requerida para registrarse")
+    async def get_user_by_id(self, user_id: UUID | str) -> UsuarioModel:
+        try:
+            normalized_id = UUID(str(user_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Identificador de usuario inválido") from exc
+        result = await self.db.execute(select(UsuarioModel).where(UsuarioModel.id == normalized_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+        return user
 
-    user = User(
-        email=payload.email,
-        full_name=payload.fullName,
-        password_hash=hash_password(payload.password),
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    token = create_access_token(user.id)
-    return token, _to_user_out(user)
-
-
-def login(db: Session, payload: LoginPayload) -> tuple[str, UserOut]:
-    user = db.query(User).filter(User.email == payload.email).first()
-    if not user or not payload.password or not verify_password(payload.password, user.password_hash):
-        raise unauthorized("Correo o contraseña incorrectos")
-
-    token = create_access_token(user.id)
-    return token, _to_user_out(user)
+    async def delete_user_completely(self, user_id: UUID) -> None:
+        await self.db.execute(delete(EmailGenerated).where(EmailGenerated.usuario_id == user_id))
+        await self.db.execute(delete(EntrevistaModel).where(EntrevistaModel.usuario_id == user_id))
+        await self.db.execute(delete(JobMatchModel).where(JobMatchModel.usuario_id == user_id))
+        await self.db.execute(delete(CVModel).where(CVModel.usuario_id == user_id))
+        await self.db.execute(delete(UsuarioModel).where(UsuarioModel.id == user_id))
+        await self.db.commit()
+        if supabase_admin_client is not None:
+            supabase_admin_client.auth.admin.delete_user(str(user_id))

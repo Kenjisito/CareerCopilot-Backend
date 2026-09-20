@@ -1,32 +1,22 @@
-from typing import Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, UploadFile
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.modules.ats import service
 from app.modules.ats.schemas import ATSDiagnostic
+from app.shared.dependencies import get_current_user_id
 
-# Prefijo sin /cvs ni /api — el frontend llama exactamente a
-# `${API_BASE_URL}/ats/analyze` y `${API_BASE_URL}/ats/latest`,
-# con API_BASE_URL ya incluyendo /api/v1 (ver app/main.py).
 router = APIRouter(prefix="/ats", tags=["ATS"])
 
 
 @router.post("/analyze", response_model=ATSDiagnostic, status_code=201)
-async def analyze(
-    file: UploadFile = File(...),
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    file_bytes = await file.read()
-    return service.analyze_cv(db, user_id, file_bytes, file.filename or "cv")
+@router.post("/process", response_model=ATSDiagnostic, status_code=201)
+async def analyze(file: Annotated[UploadFile, File(...)], user_id=Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    return await service.analyze_cv(db, user_id, await file.read(), file.filename or "cv")
 
 
-@router.get("/latest", response_model=Optional[ATSDiagnostic])
-def latest(
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    return service.get_latest(db, user_id)
+@router.get("/latest", response_model=ATSDiagnostic | None)
+async def latest(user_id=Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    return await service.get_latest(db, user_id)

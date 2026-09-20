@@ -7,22 +7,22 @@ integrarbackend.txt del repo) implique tocar solo este archivo.
 import json
 from typing import Any
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.shared.errors import upstream_ai_error
 
-_client: OpenAI | None = None
+_client: AsyncOpenAI | None = None
 
 
-def _get_client() -> OpenAI:
+def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=15.0, max_retries=1)
+        _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=30.0, max_retries=1)
     return _client
 
 
-def generate_json(system_prompt: str, user_prompt: str) -> dict[str, Any]:
+async def generate_json(system_prompt: str, user_prompt: str, model: str | None = None) -> dict[str, Any]:
     """Llama al modelo pidiendo EXCLUSIVAMENTE un objeto JSON como
     respuesta (ver los system prompts de cada módulo) y lo parsea.
     Lanza un 502 (upstream_ai_error) si el proveedor falla o devuelve
@@ -30,8 +30,8 @@ def generate_json(system_prompt: str, user_prompt: str) -> dict[str, Any]:
     "reintentar" sin perder el contexto ya ingresado por el usuario."""
     try:
         client = _get_client()
-        response = client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
+        response = await client.chat.completions.create(
+            model=model or settings.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

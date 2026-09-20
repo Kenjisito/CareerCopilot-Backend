@@ -1,24 +1,21 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models import UsuarioModel
 from app.db.session import get_db
-from app.modules.auth import service
-from app.modules.auth.schemas import AuthResponse, LoginPayload, RegisterPayload
+from app.modules.auth.schemas import UserResponse
+from app.modules.auth.service import AuthService
+from app.shared.dependencies import get_current_user
 
-# Nota: el frontend todavía NO llama a estas rutas (login/register están
-# mockeados en el código actual). Se dejan listas con el contrato exacto
-# de frontend/types/user.ts para que conectar el frontend real sea solo
-# reemplazar el setTimeout por un fetch a estos dos endpoints.
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-@router.post("/register", response_model=AuthResponse, status_code=201)
-def register(payload: RegisterPayload, db: Session = Depends(get_db)):
-    token, user = service.register(db, payload)
-    return AuthResponse(token=token, user=user)
+@router.get("/me", response_model=UserResponse)
+async def get_my_profile(user: UsuarioModel = Depends(get_current_user)):
+    return user
 
 
-@router.post("/login", response_model=AuthResponse)
-def login(payload: LoginPayload, db: Session = Depends(get_db)):
-    token, user = service.login(db, payload)
-    return AuthResponse(token=token, user=user)
+@router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_account(user: UsuarioModel = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await AuthService(db).delete_user_completely(user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

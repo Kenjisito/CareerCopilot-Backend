@@ -1,27 +1,21 @@
-from typing import Optional
-
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class JobMatchPayload(BaseModel):
-    cvText: str
-    jobDescription: str
-
-
-class SkillsGap(BaseModel):
-    matching: list[str]
-    missing: list[str]
-
-
-class GapAnalysis(BaseModel):
-    technicalSkills: SkillsGap
-    softSkills: SkillsGap
+    nombre: str = Field(min_length=1)
+    ofertaTexto: str = Field(min_length=20)
 
 
 class JobMatchResult(BaseModel):
-    matchPercentage: int
-    jobTitle: str
-    companyName: Optional[str] = None
-    summary: str
-    gaps: GapAnalysis
-    recommendations: list[str]
+    id: str
+    scoreCompatibilidad: int
+    cumple: list[str]
+    noCumple: list[str]
+    resumen: str
+
+
+class JobMatchAnalysis(BaseModel):
+    score_compatibilidad: int = Field(ge=0, le=100)
+    cumple: list[str]
+    no_cumple: list[str]
+    resumen: str

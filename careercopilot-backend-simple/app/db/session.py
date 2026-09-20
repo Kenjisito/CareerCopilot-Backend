@@ -1,26 +1,24 @@
-"""
-Motor de base de datos. SQLite por defecto (un solo archivo, cero
-configuración) — suficiente para lo que el frontend actual necesita.
-Si más adelante el equipo decide usar Postgres/Supabase, solo se cambia
-DATABASE_URL; el resto del código no depende del motor específico.
-"""
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+"""Engine y sesiones async de SQLAlchemy 2.0."""
+from collections.abc import AsyncIterator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
 
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+database_url = settings.DATABASE_URL
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif database_url.startswith("sqlite://") and "+aiosqlite" not in database_url:
+    database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
 
-engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_async_engine(database_url, pool_pre_ping=True)
+SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
-def get_db():
-    """Dependency de FastAPI: entrega una sesión por request y la cierra al final."""
-    db = SessionLocal()
-    try:
+async def get_db() -> AsyncIterator[AsyncSession]:
+    async with SessionLocal() as db:
         yield db
-    finally:
-        db.close()

@@ -3,6 +3,9 @@ uvicorn[standard]==0.30.6
 
 # Persistencia simple (sin Supabase/Postgres — el frontend no lo requiere)
 sqlalchemy==2.0.35
+asyncpg==0.29.0
+aiosqlite==0.20.0
+supabase==2.7.4
 
 # Auth: hashing de contraseñas + JWT propio (el frontend ya espera un
 # Bearer token guardado en localStorage, no un flujo de Supabase)

@@ -8,10 +8,10 @@ from pydantic import BaseModel
 
 
 class AtsSections(BaseModel):
-    contactInfo: bool
-    workExperience: bool
-    education: bool
-    skills: bool
+    contactInfo: bool = False
+    workExperience: bool = False
+    education: bool = False
+    skills: bool = False
 
 
 class ATSDiagnostic(BaseModel):

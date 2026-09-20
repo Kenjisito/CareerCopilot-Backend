@@ -1,61 +1,33 @@
-from sqlalchemy.orm import Session
+from uuid import UUID
 
-from app.db.models import AtsDiagnostic
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.ai_router import generate_json_response
+from app.db.models import CVModel
 from app.modules.ats.extract import extract_text
 from app.modules.ats.prompts import ATS_SYSTEM_PROMPT, build_ats_user_prompt
-from app.modules.ats.schemas import ATSDiagnostic
-from app.shared.ai_client import generate_json
+from app.modules.ats.schemas import ATSDiagnostic, AtsSections
 
 
-def analyze_cv(db: Session, user_id: str, file_bytes: bytes, filename: str) -> ATSDiagnostic:
+async def analyze_cv(db: AsyncSession, user_id: UUID, file_bytes: bytes, filename: str) -> ATSDiagnostic:
     parsed_text = extract_text(file_bytes, filename)
-
-    result = generate_json(ATS_SYSTEM_PROMPT, build_ats_user_prompt(parsed_text))
-
+    result = await generate_json_response(ATS_SYSTEM_PROMPT, build_ats_user_prompt(parsed_text))
     diagnostic = ATSDiagnostic(
-        score=result["score"],
+        score=max(0, min(100, int(result.get("score", 0)))),
         parsedText=parsed_text,
-        summary=result["summary"],
-        sections=result["sections"],
+        summary=result.get("summary", ""),
+        sections=AtsSections.model_validate(result.get("sections", {})),
         strengths=result.get("strengths", []),
         improvements=result.get("improvements", []),
         missingKeywords=result.get("missingKeywords", []),
     )
-
-    # Se guarda como "el más reciente" del usuario — soporta GET /ats/latest.
-    record = AtsDiagnostic(
-        user_id=user_id,
-        file_name=filename,
-        score=diagnostic.score,
-        parsed_text=diagnostic.parsedText,
-        summary=diagnostic.summary,
-        sections=diagnostic.sections.model_dump(),
-        strengths=diagnostic.strengths,
-        improvements=diagnostic.improvements,
-        missing_keywords=diagnostic.missingKeywords,
-    )
-    db.add(record)
-    db.commit()
-
+    db.add(CVModel(usuario_id=user_id, file_name=filename, parsed_text=parsed_text, score=diagnostic.score, analysis=diagnostic.model_dump()))
+    await db.commit()
     return diagnostic
 
 
-def get_latest(db: Session, user_id: str) -> ATSDiagnostic | None:
-    record = (
-        db.query(AtsDiagnostic)
-        .filter(AtsDiagnostic.user_id == user_id)
-        .order_by(AtsDiagnostic.created_at.desc())
-        .first()
-    )
-    if not record:
-        return None
-
-    return ATSDiagnostic(
-        score=record.score,
-        parsedText=record.parsed_text,
-        summary=record.summary,
-        sections=record.sections,
-        strengths=record.strengths,
-        improvements=record.improvements,
-        missingKeywords=record.missing_keywords,
-    )
+async def get_latest(db: AsyncSession, user_id: UUID) -> ATSDiagnostic | None:
+    result = await db.execute(select(CVModel).where(CVModel.usuario_id == user_id).order_by(CVModel.created_at.desc()).limit(1))
+    record = result.scalar_one_or_none()
+    return ATSDiagnostic.model_validate(record.analysis) if record and record.analysis else None

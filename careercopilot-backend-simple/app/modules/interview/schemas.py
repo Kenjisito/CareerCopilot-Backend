@@ -1,35 +1,22 @@
-from typing import Literal, Optional
+from uuid import UUID
 
-from pydantic import BaseModel
-
-QuestionCategory = Literal["technical", "behavioral", "situational"]
+from pydantic import BaseModel, Field
 
 
-class InterviewSessionConfig(BaseModel):
-    jobTitle: str
-    category: Literal["technical", "behavioral", "situational", "mixed"]
-    numberOfQuestions: int
+class InterviewStartPayload(BaseModel):
+    jobMatchId: UUID | None = None
+    tipo: str = "mixta"
+    seniority: str = "Senior"
 
 
-class InterviewQuestion(BaseModel):
-    id: str
-    category: QuestionCategory
-    question: str
-    contextOrTips: Optional[str] = None
+class MessagePayload(BaseModel):
+    contenido: str = Field(min_length=1, max_length=10000)
 
 
-class AnswerFeedback(BaseModel):
-    score: int
-    strengths: list[str]
-    areasForImprovement: list[str]
-    suggestedAnswer: str
+class InterviewStartResponse(BaseModel):
+    entrevistaId: UUID
+    respuesta: str
 
 
-class SubmitAnswerPayload(BaseModel):
-    questionId: str
-    answer: str
-
-
-class SubmitAnswerResult(BaseModel):
-    feedback: AnswerFeedback
-    nextQuestion: Optional[InterviewQuestion] = None
+class MessageResponse(BaseModel):
+    respuesta: str

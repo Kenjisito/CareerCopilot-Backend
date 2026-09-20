@@ -1,37 +1,14 @@
-"""
-Estos esquemas replican exactamente frontend/types/user.ts — campo por
-campo — porque ese archivo ya es el contrato real, aunque hoy nada lo
-llame todavía (login/register están mockeados con setTimeout).
-"""
 from datetime import datetime
-from typing import Optional
+from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
-class LoginPayload(BaseModel):
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
     email: EmailStr
-    password: Optional[str] = None
-
-
-class RegisterPayload(BaseModel):
-    fullName: str
-    email: EmailStr
-    password: Optional[str] = None
-
-
-class UserOut(BaseModel):
-    id: str
-    email: str
-    fullName: str
-    avatarUrl: Optional[str] = None
-    role: Optional[str] = None
-    createdAt: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class AuthResponse(BaseModel):
-    token: str
-    user: UserOut
+    nombre_completo: str | None = None
+    plan: str
+    organization_id: UUID | None = None
+    created_at: datetime
