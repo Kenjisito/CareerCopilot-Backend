@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     DATABASE_URL: str = "sqlite+aiosqlite:///./careercopilot.db"
 
-    AI_PROVIDER: str = "openai"
+    AI_PROVIDER: str = "openai"  # "openai" | "groq" — ver app/shared/ai_client.py
+    AI_BASE_URL: str = ""  # override manual; si está vacío se deriva de AI_PROVIDER
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
     AI_PREMIUM_MODEL: str = "gpt-4o"
