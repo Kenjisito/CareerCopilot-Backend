@@ -27,5 +27,5 @@ def conflict(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
-def upstream_ai_error(detail: str = "El servicio de IA no está disponible, intenta de nuevo") -> HTTPException:
+def upstream_ai_error(detail: str = "El servicio de IA no está disponible en este momento. Intenta de nuevo en unos minutos.") -> HTTPException:
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)

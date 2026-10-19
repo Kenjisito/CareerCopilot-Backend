@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai_router import generate_json_response
+from app.shared.errors import upstream_ai_error
 from app.db.models import EmailGenerated, JobMatchModel
 from app.modules.email.schemas import EmailGeneratePayload, EmailUpdatePayload
 
@@ -16,7 +17,9 @@ async def create_email(db: AsyncSession, user_id: UUID, payload: EmailGeneratePa
         raise HTTPException(status_code=404, detail="Job Match no encontrado")
     prompt = f"Genera un email de postulación {payload.tone} para {match.nombre}. Oferta: {match.oferta_texto}. Destinatario: {payload.recipientName or 'Hiring Team'}. Devuelve subject y body."
     result = await generate_json_response("No inventes experiencia ni datos no presentes. Responde JSON.", prompt)
-    email = EmailGenerated(usuario_id=user_id, job_match_id=match.id, subject=result.get("subject", f"Application for {match.nombre}"), body=result.get("body", ""))
+    if not str(result.get("body", "")).strip():
+        raise upstream_ai_error()
+    email = EmailGenerated(usuario_id=user_id, job_match_id=match.id, subject=result.get("subject") or f"Postulación a {match.nombre}", body=result["body"])
     db.add(email)
     await db.commit()
     await db.refresh(email)

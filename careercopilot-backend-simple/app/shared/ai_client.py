@@ -19,6 +19,7 @@ En ambos casos `OPENAI_API_KEY` es la key del proveedor elegido (una
 por proveedor (útil para un proxy propio o un proveedor nuevo sin tocar código).
 """
 import json
+import logging
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -26,6 +27,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.shared.errors import upstream_ai_error
 
+logger = logging.getLogger(__name__)
 _client: AsyncOpenAI | None = None
 
 # Proveedores compatibles con el SDK de OpenAI (mismo formato de request/response).
@@ -48,7 +50,7 @@ def _get_client() -> AsyncOpenAI:
             api_key=settings.OPENAI_API_KEY,
             base_url=_resolve_base_url(),
             timeout=30.0,
-            max_retries=1,
+            max_retries=2,
         )
     return _client
 
@@ -75,4 +77,7 @@ async def generate_json(system_prompt: str, user_prompt: str, model: str | None 
             raise ValueError("Respuesta vacía del modelo")
         return json.loads(content)
     except Exception as exc:  # noqa: BLE001 — cualquier falla del proveedor se traduce a 502
-        raise upstream_ai_error(f"Error al generar contenido con IA: {exc}") from exc
+        # El detalle real queda solo en el log del servidor; al usuario no se le
+        # expone texto del proveedor (puede incluir datos internos o de la cuenta).
+        logger.exception("Falla del proveedor de IA")
+        raise upstream_ai_error() from exc
