@@ -8,7 +8,8 @@ from app.core.ai_router import generate_json_response
 from app.db.models import CVModel
 from app.modules.ats.extract import extract_text
 from app.modules.ats.prompts import ATS_SYSTEM_PROMPT, build_ats_user_prompt
-from app.modules.ats.schemas import ATSDiagnostic, AtsSections
+from app.modules.ats.schemas import ATSDiagnostic, ATSHistoryItem, AtsSections
+from app.shared.errors import not_found
 
 
 async def analyze_cv(db: AsyncSession, user_id: UUID, file_bytes: bytes, filename: str) -> ATSDiagnostic:
@@ -32,3 +33,16 @@ async def get_latest(db: AsyncSession, user_id: UUID) -> ATSDiagnostic | None:
     result = await db.execute(select(CVModel).where(CVModel.usuario_id == user_id).order_by(CVModel.created_at.desc()).limit(1))
     record = result.scalar_one_or_none()
     return ATSDiagnostic.model_validate(record.analysis) if record and record.analysis else None
+
+
+async def get_history(db: AsyncSession, user_id: UUID) -> list[ATSHistoryItem]:
+    result = await db.execute(select(CVModel).where(CVModel.usuario_id == user_id).order_by(CVModel.created_at.desc()).limit(50))
+    return [ATSHistoryItem(id=r.id, fileName=r.file_name, score=r.score, createdAt=r.created_at) for r in result.scalars()]
+
+
+async def get_by_id(db: AsyncSession, user_id: UUID, cv_id: UUID) -> ATSDiagnostic:
+    result = await db.execute(select(CVModel).where(CVModel.id == cv_id, CVModel.usuario_id == user_id))
+    record = result.scalar_one_or_none()
+    if record is None or not record.analysis:
+        raise not_found("Diagnóstico no encontrado")
+    return ATSDiagnostic.model_validate(record.analysis)

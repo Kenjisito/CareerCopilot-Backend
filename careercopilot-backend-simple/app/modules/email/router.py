@@ -8,12 +8,13 @@ from app.db.models import UsuarioModel
 from app.db.session import get_db
 from app.modules.email.schemas import EmailGeneratePayload, EmailOut, EmailUpdatePayload
 from app.modules.email.service import create_email, update_email
+from app.shared.rate_limit import ai_rate_limit
 from app.shared.dependencies import get_current_user
 
 router = APIRouter(prefix="/email", tags=["Email"])
 
 
-@router.post("/generate", response_model=EmailOut, status_code=201)
+@router.post("/generate", response_model=EmailOut, status_code=201, dependencies=[Depends(ai_rate_limit)])
 async def generate(payload: EmailGeneratePayload, user: UsuarioModel = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await create_email(db, user.id, payload)
 

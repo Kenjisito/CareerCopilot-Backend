@@ -24,7 +24,10 @@ class Settings(BaseSettings):
     AI_PREMIUM_MODEL: str = "gpt-4o"
     LOG_LEVEL: str = "INFO"
     FREE_MATCH_LIMIT: int = 5
-    FREE_INTERVIEW_LIMIT: int = 1
+    FREE_INTERVIEW_LIMIT: int = 3
+    AI_RATE_LIMIT_PER_HOUR: int = 40  # llamadas a IA por usuario y hora (plan free)
+    AI_RATE_LIMIT_PREMIUM_PER_HOUR: int = 200
+    ADMIN_EMAILS: list[str] = []  # correos que pueden cambiar planes (POST /admin/plan)
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""

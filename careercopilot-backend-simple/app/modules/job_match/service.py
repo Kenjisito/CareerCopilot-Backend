@@ -1,4 +1,7 @@
 from __future__ import annotations
+from pydantic import ValidationError
+
+from app.shared.errors import upstream_ai_error
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -23,7 +26,11 @@ async def analyze_match(db: AsyncSession, user_id: UUID, plan: str, payload: Job
     if cv is None:
         raise HTTPException(status_code=400, detail="Debes subir y procesar un CV antes de realizar un Job Match")
     raw = await generate_json_response(JOB_MATCH_SYSTEM_PROMPT, build_job_match_user_prompt(cv.parsed_text, payload.ofertaTexto), premium=plan == "premium")
-    analysis = JobMatchAnalysis.model_validate(raw)
+    try:
+        analysis = JobMatchAnalysis.model_validate(raw)
+    except ValidationError as exc:
+        # La IA devolvió un JSON con otra forma: se trata como falla del proveedor, no como error 500.
+        raise upstream_ai_error() from exc
     match = JobMatchModel(usuario_id=user_id, cv_id=cv.id, nombre=payload.nombre, oferta_texto=payload.ofertaTexto, score_compatibilidad=analysis.score_compatibilidad, cumple=analysis.cumple, no_cumple=analysis.no_cumple)
     db.add(match)
     await db.commit()

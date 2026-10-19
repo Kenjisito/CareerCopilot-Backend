@@ -1,9 +1,11 @@
-.venv/
-__pycache__/
-*.pyc
-.env
-*.db
-.env.*
 !.env.example
+*.db
+*.pyc
 *.save
 .DS_Store
+.env
+.env.*
+.venv/
+__pycache__/
+data/
+shots/

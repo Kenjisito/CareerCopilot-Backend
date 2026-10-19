@@ -1,11 +1,12 @@
 from __future__ import annotations
 from uuid import UUID
 
-from fastapi import HTTPException
-from sqlalchemy import select
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.ai_router import generate_json_response
 from app.db.models import EntrevistaModel, JobMatchModel, MensajeModel
 from app.modules.interview.prompts import build_first_question_prompt, build_next_question_prompt
@@ -15,7 +16,14 @@ class InterviewService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def iniciar_entrevista(self, user_id: UUID, job_match_id: UUID, tipo: str, seniority: str) -> tuple[EntrevistaModel, str]:
+    async def iniciar_entrevista(self, user_id: UUID, plan: str, job_match_id: UUID, tipo: str, seniority: str) -> tuple[EntrevistaModel, str]:
+        if plan != "premium":
+            used = await self.db.scalar(select(func.count(EntrevistaModel.id)).where(EntrevistaModel.usuario_id == user_id))
+            if (used or 0) >= settings.FREE_INTERVIEW_LIMIT:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=f"Alcanzaste el límite de {settings.FREE_INTERVIEW_LIMIT} entrevistas del plan gratuito.",
+                )
         match = await self.db.scalar(select(JobMatchModel).where(JobMatchModel.id == job_match_id, JobMatchModel.usuario_id == user_id))
         if match is None:
             raise HTTPException(status_code=404, detail="Job Match no encontrado")
