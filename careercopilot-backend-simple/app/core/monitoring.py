@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Logging centralizado y punto de integracion opcional con Sentry."""
 import logging
 

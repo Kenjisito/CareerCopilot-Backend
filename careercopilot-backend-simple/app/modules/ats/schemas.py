@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Replica exacta de frontend/types/ats.ts (ATSDiagnostic) — el contrato
 real que ya usa hooks/use-ats.ts y services/ats-service.ts.

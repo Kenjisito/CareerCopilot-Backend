@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .env
 *.db
+.env.*
+!.env.example
+*.save
+.DS_Store

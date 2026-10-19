@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Punto de extension para OCR de PDFs escaneados."""
 from app.shared.errors import bad_request
 

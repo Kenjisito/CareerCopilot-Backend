@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Extracción de texto de CVs en PDF o DOCX. Función aislada del endpoint
 HTTP (mismo principio de desacople usado en el resto del proyecto) para

@@ -1,3 +1,4 @@
+from __future__ import annotations
 INTERVIEW_QUESTION_SYSTEM_PROMPT = """Eres un entrevistador técnico que genera UNA pregunta de entrevista.
 Devuelve EXCLUSIVAMENTE un objeto JSON con este formato exacto:
 {

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Base declarativa publica para modelos SQLAlchemy."""
 from app.db.session import Base
 

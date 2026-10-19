@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Único punto de contacto con el proveedor de IA. Ningún módulo llama al
 SDK de OpenAI directamente — todos pasan por `generate_json()` — para

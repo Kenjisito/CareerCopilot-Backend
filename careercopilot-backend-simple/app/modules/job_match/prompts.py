@@ -1,3 +1,4 @@
+from __future__ import annotations
 JOB_MATCH_SYSTEM_PROMPT = """Eres un motor de comparación semántica entre un CV y una oferta laboral.
 Devuelve EXCLUSIVAMENTE un objeto JSON válido con este formato exacto:
 {

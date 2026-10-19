@@ -1,3 +1,4 @@
+from __future__ import annotations
 # app/shared/dependencies.py
 """Dependencias FastAPI reutilizables entre módulos."""
 from uuid import UUID

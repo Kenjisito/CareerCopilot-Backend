@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Engine y sesiones async de SQLAlchemy 2.0."""
 from collections.abc import AsyncIterator
 

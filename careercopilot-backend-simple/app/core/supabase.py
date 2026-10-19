@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Clientes Supabase opcionales para Storage y operaciones administrativas."""
 from supabase import Client, create_client
 from app.core.config import settings

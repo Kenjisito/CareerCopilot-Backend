@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Configuración centralizada. Todo el resto del código importa `settings`
 desde aquí — nunca lee os.environ directamente.

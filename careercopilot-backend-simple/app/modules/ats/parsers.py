@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Parsers de documentos del CV."""
 from app.modules.ats.extract import extract_text
 

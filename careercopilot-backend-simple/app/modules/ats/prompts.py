@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Prompt del módulo ATS. Se basa en el system prompt ya sugerido en
 integrarbackend.txt del propio repo, ajustado para incluir exactamente

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Capa unica para seleccionar el proveedor/modelo de IA."""
 from typing import Any
 

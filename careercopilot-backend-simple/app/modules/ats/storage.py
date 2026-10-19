@@ -1,3 +1,4 @@
+from __future__ import annotations
 import uuid
 from fastapi import UploadFile, HTTPException
 from app.core.supabase import supabase_admin_client

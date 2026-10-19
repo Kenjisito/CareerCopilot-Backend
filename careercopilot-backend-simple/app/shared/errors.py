@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 El apiClient del frontend (lib/api-client.ts) espera, cuando la respuesta
 no es ok:
