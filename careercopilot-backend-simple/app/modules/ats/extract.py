@@ -7,6 +7,7 @@ que se pueda testear o reemplazar sin tocar el router.
 import io
 
 import pdfplumber
+from fastapi import HTTPException
 from docx import Document
 
 from app.shared.errors import bad_request
@@ -15,21 +16,26 @@ from app.shared.errors import bad_request
 def extract_text(file_bytes: bytes, filename: str) -> str:
     lower_name = filename.lower()
 
-    if lower_name.endswith(".pdf"):
-        text_parts: list[str] = []
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text_parts.append(page_text)
-        text = "\n".join(text_parts)
+    try:
+        if lower_name.endswith(".pdf"):
+            text_parts: list[str] = []
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(page_text)
+            text = "\n".join(text_parts)
 
-    elif lower_name.endswith(".docx"):
-        document = Document(io.BytesIO(file_bytes))
-        text = "\n".join(p.text for p in document.paragraphs)
+        elif lower_name.endswith(".docx"):
+            document = Document(io.BytesIO(file_bytes))
+            text = "\n".join(p.text for p in document.paragraphs)
 
-    else:
-        raise bad_request("Formato no soportado. Sube un archivo PDF o DOCX.")
+        else:
+            raise bad_request("Formato no soportado. Sube un archivo PDF o DOCX.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise bad_request("No se pudo leer el archivo. Verifica que no esté dañado y vuelve a subirlo.")
 
     text = text.strip()
     if len(text) < 30:

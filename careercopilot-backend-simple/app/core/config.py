@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     AI_PREMIUM_MODEL: str = "gpt-4o"
     LOG_LEVEL: str = "INFO"
     FREE_MATCH_LIMIT: int = 5
-    FREE_INTERVIEW_LIMIT: int = 1
+    FREE_INTERVIEW_LIMIT: int = 3
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""

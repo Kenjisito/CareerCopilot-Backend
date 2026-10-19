@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.supabase import supabase_admin_client
@@ -22,6 +23,33 @@ class AuthService:
         user = result.scalar_one_or_none()
         if user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+        return user
+
+    async def get_or_create_from_token(self, payload: dict) -> UsuarioModel:
+        """Devuelve el usuario del token; si es su primer acceso (cuenta recién
+        creada en Supabase) lo crea en la tabla `usuarios` con plan 'free'."""
+        try:
+            return await self.get_user_by_id(payload["sub"])
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+        email = payload.get("email")
+        if not email:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido: falta el correo del usuario.")
+        metadata = payload.get("user_metadata") or {}
+        user = UsuarioModel(
+            id=UUID(str(payload["sub"])),
+            email=email,
+            nombre_completo=metadata.get("full_name") or metadata.get("name"),
+        )
+        self.db.add(user)
+        try:
+            await self.db.commit()
+        except IntegrityError:
+            # Otra petición simultánea ya lo creó.
+            await self.db.rollback()
+            return await self.get_user_by_id(payload["sub"])
+        await self.db.refresh(user)
         return user
 
     async def delete_user_completely(self, user_id: UUID) -> None:

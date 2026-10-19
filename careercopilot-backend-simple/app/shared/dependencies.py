@@ -26,7 +26,7 @@ async def get_current_user(
             detail="Token inválido: falta identificador de usuario."
         )
     service = AuthService(db)
-    return await service.get_user_by_id(user_id)
+    return await service.get_or_create_from_token(payload)
 
 
 async def get_current_user_id(
