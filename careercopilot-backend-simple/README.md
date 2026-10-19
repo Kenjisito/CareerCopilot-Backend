@@ -165,3 +165,21 @@ Documentación interactiva en `http://localhost:8000/docs`.
    llamada es la misma que ya se usaba con OpenAI (solo cambia la
    `base_url`), pero falta la prueba real con una `OPENAI_API_KEY` de
    Groq — ver `scripts/test_ia.py` y la guía de pruebas.
+
+## Levantar todo con un comando (Docker)
+
+1. Instala y abre Docker Desktop.
+2. Deja las carpetas `CareerCopilot-Backend` y `CareerCopilot-Frontend` lado a lado.
+3. En `careercopilot-backend-simple/` copia `.env.example` a `.env` y completa:
+   - `SUPABASE_URL` y `SUPABASE_KEY` (Supabase → Project Settings → API; la clave *anon*).
+   - `OPENAI_API_KEY` (clave de Groq o de OpenAI) y `AI_PROVIDER` (`groq` u `openai`).
+   - `ADMIN_EMAILS` con tu correo si quieres activar Premium manualmente.
+4. Ejecuta:
+   ```
+   docker compose up --build
+   ```
+5. Abre http://localhost:3000 (API en http://localhost:8000/docs).
+
+Para detener: `Ctrl + C`, y `docker compose down` para apagar los contenedores.
+Para probar el recuperar contraseña agrega `http://localhost:3000/reset-password` en
+Supabase → Authentication → URL Configuration → Redirect URLs.

@@ -1,3 +1,14 @@
+# Levanta TODO con un solo comando (backend + frontend):
+#   docker compose up --build
+# Luego abre http://localhost:3000
+#
+# Requisitos:
+#   - Docker Desktop abierto.
+#   - Las carpetas CareerCopilot-Backend y CareerCopilot-Frontend lado a lado
+#     (el frontend se busca en ../../CareerCopilot-Frontend).
+#   - Un archivo .env en esta carpeta (copia .env.example y complétalo).
+#     Es el MISMO archivo para los dos servicios: el frontend toma de ahí
+#     SUPABASE_URL y SUPABASE_KEY.
 services:
   api:
     build: .
@@ -6,6 +17,20 @@ services:
     env_file:
       - .env
     environment:
+      # Para probar localmente no hace falta Postgres: se usa SQLite en ./data
       DATABASE_URL: sqlite+aiosqlite:///./data/careercopilot.db
+      CORS_ORIGINS: '["http://localhost:3000"]'
     volumes:
       - ./data:/app/data
+
+  web:
+    build: ../../CareerCopilot-Frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # El navegador llama a la API desde tu computador, por eso localhost
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:?Falta SUPABASE_URL en el .env}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_KEY:?Falta SUPABASE_KEY en el .env}
+    depends_on:
+      - api
