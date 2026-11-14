@@ -42,7 +42,8 @@ with sync_playwright() as p:
     step("entrevista"); page.get_by_role("button",name=re.compile("Entrevista IA")).first.click(); page.wait_for_url("**/entrevista?id=*"); page.wait_for_timeout(600); shot(page,"14_int_setup")
     page.get_by_role("button",name=re.compile("Iniciar simulación")).click(); page.wait_for_selector("text=FastAPI", timeout=10000)
     page.fill("textarea","Usé FastAPI para una API de reservas con 5 mil usuarios."); page.keyboard.press("Enter"); page.wait_for_selector("text=Usé FastAPI", timeout=5000); page.wait_for_timeout(1500); shot(page,"15_int_chat")
-    page.get_by_role("button",name="Finalizar").click(); page.wait_for_selector("text=Terminaste esta entrevista"); shot(page,"16_int_done")
+    page.get_by_role("button",name=re.compile("Terminar y evaluar")).click(); page.get_by_role("button",name="Sí, evaluar").click()
+    page.wait_for_selector("text=Evaluación de tu entrevista", timeout=10000); shot(page,"16_int_done")
     step("delete from historial"); page.goto(BASE+"/historial"); page.wait_for_selector("text=Backend Dev")
     page.get_by_role("button",name=re.compile("Eliminar")).first.click(); shot(page,"17_hist_confirm"); page.get_by_role("button",name="Confirmar").click(); page.wait_for_selector("text=Aún no tienes análisis", timeout=8000); shot(page,"18_hist_empty")
     step("job-match tras eliminar"); 

@@ -1,6 +1,6 @@
 """Servidor de pruebas LOCAL: imita Supabase Auth (JWKS ES256, login, signup) y una API compatible con OpenAI.
 Solo sirve para probar CareerCopilot sin internet ni credenciales reales."""
-import json, time, uuid, jwt
+import json, re, time, uuid, jwt
 from cryptography.hazmat.primitives.asymmetric import ec
 from jwt.algorithms import ECAlgorithm
 from fastapi import FastAPI, Request
@@ -53,20 +53,35 @@ def logout(): return Response(status_code=204)
 
 @app.post("/v1/chat/completions")
 async def chat(r: Request):
+    """Imita a Groq: responde con la forma de JSON que pide cada prompt."""
     b = await r.json(); system = b["messages"][0]["content"]; user_p = b["messages"][-1]["content"]
-    if "ATS" in system:
-        out = {"score": 74, "summary": "CV con buena estructura; faltan métricas y palabras clave técnicas.",
+    if '"rubrica"' in system:  # Diagnóstico ATS
+        out = {"rubrica": {"estructura": 16, "contacto": 8, "experiencia": 20, "habilidades": 14, "legibilidad": 16},
+               "detectedRole": "Desarrollador Backend",
+               "summary": "CV con buena estructura; faltan métricas y palabras clave técnicas.",
                "sections": {"contactInfo": True, "workExperience": True, "education": True, "skills": True},
                "strengths": ["Estructura clara", "Experiencia relevante listada"],
                "improvements": ["Agregar logros cuantificables", "Incluir enlace a GitHub"],
                "missingKeywords": ["Docker", "CI/CD", "TypeScript"]}
-    elif "compatib" in system.lower() or "Job Match" in system or "score_compatibilidad" in system:
+    elif '"es_oferta"' in system:  # extracción de oferta desde una URL
+        out = {"es_oferta": True, "nombre": "Analista de Datos", "empresa": "DataCorp",
+               "oferta_texto": "Buscamos Analista de Datos con SQL, Python y Power BI. Requisitos: 2 años de experiencia."}
+    elif '"score_compatibilidad"' in system:  # Job Match
         out = {"score_compatibilidad": 68, "cumple": ["Python", "FastAPI", "SQL"], "no_cumple": ["Kubernetes", "AWS"],
-               "resumen": "Buen encaje con el stack principal; brechas en infraestructura cloud."}
-    elif "email" in user_p.lower() or "correo" in user_p.lower():
+               "resumen": "Buen encaje con el stack principal; brechas en infraestructura cloud.",
+               "recomendaciones": ["Destaca tus APIs con FastAPI y su impacto", "Menciona cualquier experiencia con contenedores"]}
+    elif '"puntaje_general"' in system:  # evaluación final de la entrevista
+        n = int(re.search(r"\((\d+) preguntas respondidas\)", user_p).group(1)) if re.search(r"\((\d+) preguntas respondidas\)", user_p) else 1
+        out = {"puntaje_general": 72, "resumen": "Respondiste con claridad, pero te faltó cuantificar resultados.",
+               "preguntas": [{"puntaje": 65 + 5 * (i % 3), "comentario": "Respuesta pertinente, con poco detalle del resultado.",
+                              "sugerencia": "Agrega una cifra concreta del impacto logrado."} for i in range(n)],
+               "competencias": [{"nombre": c, "puntaje": p} for c, p in (("Comunicación", 78), ("Conocimiento del puesto", 70), ("Ejemplos concretos (STAR)", 60), ("Motivación y encaje", 75))],
+               "fortalezas": ["Comunicación clara", "Experiencia práctica con FastAPI"],
+               "recomendaciones": ["Estructura tus respuestas con el método STAR", "Cuantifica tus logros", "Prepara ejemplos sobre Kubernetes"]}
+    elif '"reaccion"' in system:  # turno del entrevistador
+        out = {"reaccion": "Gracias, buen punto.", "pregunta": "Cuéntame sobre un proyecto en el que hayas usado FastAPI y qué resultado obtuviste."}
+    else:  # email
         out = {"subject": "Postulación — Desarrollador Backend", "body": "Estimado equipo:\n\nMe gustaría postular al cargo. Mi experiencia con Python y FastAPI se ajusta a lo que buscan.\n\nSaludos,\nPostulante"}
-    else:
-        out = {"respuesta": "Cuéntame sobre un proyecto en el que hayas usado FastAPI y qué resultado obtuviste."}
     return {"id": "x", "object": "chat.completion", "created": int(time.time()), "model": b.get("model", "m"),
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": json.dumps(out)}}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
