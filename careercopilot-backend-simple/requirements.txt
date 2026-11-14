@@ -19,6 +19,9 @@ pyjwt==2.9.0
 pdfplumber==0.11.4
 python-docx==1.1.2
 
+# Extracción de ofertas laborales desde una URL (Job Match)
+beautifulsoup4==4.12.3
+
 # IA — proveedor configurable (ver app/shared/ai_client.py)
 # httpx se fija <0.28 porque openai==1.51.0 aún usa un parámetro (`proxies`)
 # que httpx 0.28 eliminó — versiones más nuevas de openai no lo necesitan,

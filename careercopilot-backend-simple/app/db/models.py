@@ -71,6 +71,7 @@ class EntrevistaModel(Base):
     usuario: Mapped[UsuarioModel] = relationship(back_populates="entrevistas")
     job_match: Mapped[JobMatchModel] = relationship(back_populates="entrevistas")
     mensajes: Mapped[list["MensajeModel"]] = relationship(back_populates="entrevista", cascade="all, delete-orphan", order_by="MensajeModel.created_at")
+    evaluacion: Mapped["EvaluacionEntrevistaModel | None"] = relationship(back_populates="entrevista", cascade="all, delete-orphan", uselist=False)
 
 
 class MensajeModel(Base):
@@ -81,6 +82,18 @@ class MensajeModel(Base):
     contenido: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     entrevista: Mapped[EntrevistaModel] = relationship(back_populates="mensajes")
+
+
+class EvaluacionEntrevistaModel(Base):
+    """Evaluación final de una simulación (puntaje, feedback por pregunta y
+    recomendaciones). Tabla nueva: `create_all` la crea al iniciar el backend."""
+    __tablename__ = "entrevista_evaluaciones"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    entrevista_id: Mapped[UUID] = mapped_column(ForeignKey("entrevistas.id", ondelete="CASCADE"), unique=True, index=True)
+    puntaje: Mapped[int] = mapped_column(Integer)
+    resultado: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    entrevista: Mapped[EntrevistaModel] = relationship(back_populates="evaluacion")
 
 
 class EmailGenerated(Base):
