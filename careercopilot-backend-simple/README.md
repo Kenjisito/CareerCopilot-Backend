@@ -12,7 +12,7 @@
 | Framework | FastAPI (async) | Elección original del equipo |
 | Base de datos | Postgres vía Supabase (`asyncpg`); cae a SQLite local si no defines `DATABASE_URL` | Migrado por Brando |
 | Auth | Supabase Auth — el backend valida el JWT que emite Supabase (`SUPABASE_JWT_SECRET`) | Migrado por Brando |
-| IA | OpenAI o **Groq** (gratis), configurable con `AI_PROVIDER` | Groq agregado por Ángel — ver `app/shared/ai_client.py` |
+| IA | **Groq** (gratis, modelo `openai/gpt-oss-120b`) u OpenAI, configurable con `AI_PROVIDER` | Groq agregado por Ángel — ver `app/shared/ai_client.py` |
 
 ## Estructura (por módulo, no por tipo de archivo)
 
@@ -57,7 +57,25 @@ scripts/
 | POST | `/api/v1/job-match/analyze` (alias `/job-match/create`) | Sí |
 | POST | `/api/v1/interview/start`, `/interview/start/{job_match_id}` | Sí |
 | POST | `/api/v1/interview/message/{entrevista_id}`, `/interview/{entrevista_id}/message` | Sí |
-| POST | `/api/v1/interview/{entrevista_id}/finish` | Sí |
+| POST | `/api/v1/interview/{entrevista_id}/finish` (devuelve la evaluación) | Sí |
+| POST | `/api/v1/job-match/extract` (lee una oferta desde su URL) | Sí |
+
+## Módulos con IA (Groq)
+
+- **Cliente de IA** (`app/shared/ai_client.py` + `app/core/ai_router.py`): modo JSON de Groq,
+  reintento si el modelo devuelve JSON inválido (`json_validate_failed`) o con otra forma
+  (validación Pydantic), textos recortados para no superar el límite de tokens por minuto del
+  plan gratuito y errores claros: 503 límite de uso / IA no configurada, 504 timeout, 502 el resto.
+- **Diagnóstico ATS**: la IA puntúa una rúbrica fija (estructura 20, contacto 10, experiencia 30,
+  habilidades 20, legibilidad 20) y el backend suma; las secciones y el contacto se confirman
+  además con detección determinista. El DOCX se lee con tablas, encabezados y pies.
+- **Job Match**: comparación semántica con recomendaciones. `/job-match/extract` lee la oferta
+  desde una URL: primero datos schema.org `JobPosting` (sin IA), si no, Groq aísla la oferta del
+  texto de la página. Protegido contra SSRF (solo sitios públicos, puertos 80/443).
+- **Entrevista**: el entrevistador recibe oferta, CV y brechas del Job Match, reacciona a cada
+  respuesta y repregunta si es vaga. Tras `INTERVIEW_QUESTIONS` preguntas (6) se genera la
+  evaluación: puntaje (promedio de respuestas), 4 competencias, feedback por pregunta y
+  recomendaciones. Se guarda en la tabla nueva `entrevista_evaluaciones` (la crea `create_all`).
 | POST | `/api/v1/email/generate` | Sí |
 | PUT | `/api/v1/email/{email_id}` | Sí |
 | GET/DELETE | `/api/v1/historial/matches`, `/historial/matches/{match_id}` | Sí |
