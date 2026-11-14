@@ -25,6 +25,7 @@ npm run build && npx next start -p 3000
 # 4) Recorridos (escritorio y móvil)
 python tests/e2e/e2e_flujo_completo.py ; python tests/e2e/e2e_flujo_completo.py mobile
 python tests/e2e/e2e_cuenta_y_extras.py ; python tests/e2e/e2e_cuenta_y_extras.py mobile
+python tests/e2e/e2e_modulos_ia.py ; python tests/e2e/e2e_modulos_ia.py mobile   # ATS, Job Match por URL, entrevista con evaluación
 ```
 Las capturas se guardan en `./shots/`. Si Chromium no se detecta solo, define `CHROMIUM_PATH`.
 

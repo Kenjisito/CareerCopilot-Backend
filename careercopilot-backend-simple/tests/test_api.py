@@ -69,7 +69,9 @@ async def test_job_match_email_y_entrevista(api):
     iid = i.json()["entrevistaId"] if "entrevistaId" in i.json() else i.json()["id"]
     msg = await api.client.post(f"/interview/{iid}/message", json={"contenido": "Usé FastAPI"})
     assert msg.status_code == 200
-    assert (await api.client.post(f"/interview/{iid}/finish")).status_code == 204
+    fin = await api.client.post(f"/interview/{iid}/finish")
+    assert fin.status_code == 200, fin.text
+    assert fin.json()["preguntasRespondidas"] == 1
 
 
 async def test_limite_3_entrevistas_gratis_y_premium_sin_limite(api):
@@ -133,7 +135,7 @@ async def test_sin_token_es_401():
 async def test_ia_con_json_invalido_es_502_no_500(api, monkeypatch):
     await upload(api, make_docx())
 
-    async def bad(system_prompt, user_prompt, model=None):
+    async def bad(system_prompt, user_prompt, model=None, **kwargs):
         return {"cualquier": "cosa"}
 
     monkeypatch.setattr("app.core.ai_router.generate_json", bad)
