@@ -1,15 +1,13 @@
 from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from supabase import AsyncClient
 
 from app.core.ai_router import generate_structured
 from app.core.config import settings
-from app.db.models import EntrevistaModel, EvaluacionEntrevistaModel, JobMatchModel, MensajeModel
 from app.modules.interview.prompts import (
     EVALUATION_SYSTEM_PROMPT,
     build_context,
@@ -27,13 +25,12 @@ from app.modules.interview.schemas import (
     InterviewMessageOut,
     QuestionFeedback,
 )
+from app.shared.supabase_utils import first_row, response_rows
 from app.shared.text import clip
 
 ROLE_INTERVIEWER = "asistente"
 ROLE_CANDIDATE = "usuario"
 
-# Límites de contexto: cada turno ≈ 3.000 tokens y la evaluación ≈ 5.000, dentro de los
-# 8.000 tokens/minuto del plan gratuito de Groq (max_tokens también cuenta).
 MAX_OFFER_CHARS = 2500
 MAX_CV_CHARS = 2500
 MAX_TRANSCRIPT_CHARS = 4000
@@ -63,15 +60,15 @@ def question_text(message: str) -> str:
     return paragraphs[-1] if paragraphs else message
 
 
-def qa_pairs(messages: list[MensajeModel]) -> list[tuple[str, str]]:
+def qa_pairs(messages: list[dict]) -> list[tuple[str, str]]:
     """(pregunta, respuesta) por cada respuesta del candidato."""
     pairs: list[tuple[str, str]] = []
     last_question = ""
     for message in messages:
-        if message.rol == ROLE_INTERVIEWER:
-            last_question = question_text(message.contenido)
-        elif message.rol == ROLE_CANDIDATE:
-            pairs.append((last_question, message.contenido))
+        if message["rol"] == ROLE_INTERVIEWER:
+            last_question = question_text(message["contenido"])
+        elif message["rol"] == ROLE_CANDIDATE:
+            pairs.append((last_question, message["contenido"]))
     return pairs
 
 
@@ -85,36 +82,80 @@ def _transcript(messages: list[tuple[str, str]], limit: int) -> str:
 
 
 class InterviewService:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, supabase: AsyncClient):
+        self.supabase = supabase
         self.total = max(1, settings.INTERVIEW_QUESTIONS)
 
-    # --- helpers ---------------------------------------------------------------
-
-    async def _get_interview(self, user_id: UUID, entrevista_id: UUID) -> EntrevistaModel:
-        interview = await self.db.scalar(
-            select(EntrevistaModel)
-            .options(
-                selectinload(EntrevistaModel.job_match).selectinload(JobMatchModel.cv),
-                selectinload(EntrevistaModel.evaluacion),
-            )
-            .where(EntrevistaModel.id == entrevista_id, EntrevistaModel.usuario_id == user_id)
+    async def _get_interview(self, user_id: UUID, entrevista_id: UUID) -> dict:
+        response = await (
+            self.supabase.table("entrevistas")
+            .select("*")
+            .eq("id", str(entrevista_id))
+            .eq("usuario_id", str(user_id))
+            .limit(1)
+            .execute()
         )
+        interview = first_row(response)
         if interview is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entrevista no encontrada.")
-        return interview
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entrevista no encontrada.",
+            )
 
-    async def _messages(self, entrevista_id: UUID) -> list[MensajeModel]:
-        result = await self.db.execute(
-            select(MensajeModel).where(MensajeModel.entrevista_id == entrevista_id).order_by(MensajeModel.created_at, MensajeModel.id)
+        match_response = await (
+            self.supabase.table("job_matches")
+            .select("*")
+            .eq("id", interview["job_match_id"])
+            .eq("usuario_id", str(user_id))
+            .limit(1)
+            .execute()
         )
-        return list(result.scalars())
+        match = first_row(match_response)
+        if match is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entrevista no encontrada.",
+            )
+
+        cv_response = await (
+            self.supabase.table("cvs")
+            .select("parsed_text")
+            .eq("id", match["cv_id"])
+            .eq("usuario_id", str(user_id))
+            .limit(1)
+            .execute()
+        )
+        evaluation_response = await (
+            self.supabase.table("entrevista_evaluaciones")
+            .select("*")
+            .eq("entrevista_id", str(entrevista_id))
+            .limit(1)
+            .execute()
+        )
+        return {
+            "interview": interview,
+            "match": match,
+            "cv": first_row(cv_response),
+            "evaluation": first_row(evaluation_response),
+        }
+
+    async def _messages(self, entrevista_id: UUID) -> list[dict]:
+        response = await (
+            self.supabase.table("mensajes")
+            .select("*")
+            .eq("entrevista_id", str(entrevista_id))
+            .order("created_at")
+            .order("id")
+            .execute()
+        )
+        return response_rows(response)
 
     async def get_session(self, user_id: UUID, entrevista_id: UUID) -> InterviewSessionOut:
-        interview = await self._get_interview(user_id, entrevista_id)
-        messages = await self._messages(entrevista_id)
-        evaluation = interview.evaluacion
-        question_feedback = evaluation.resultado.get("preguntas", []) if evaluation else []
+        bundle = await self._get_interview(user_id, entrevista_id)
+        interview = bundle["interview"]
+        evaluation = bundle["evaluation"]
+        result = evaluation.get("resultado") or {} if evaluation else {}
+        question_feedback = result.get("preguntas", [])
         feedback_by_answer = {
             index: item
             for index, item in enumerate(question_feedback)
@@ -122,102 +163,176 @@ class InterviewService:
         }
         answer_index = 0
         output_messages = []
-        for message in messages:
-            is_candidate = message.rol == ROLE_CANDIDATE
+        for message in await self._messages(entrevista_id):
+            is_candidate = message["rol"] == ROLE_CANDIDATE
             feedback = feedback_by_answer.get(answer_index) if is_candidate else None
             if is_candidate:
                 answer_index += 1
             output_messages.append(InterviewMessageOut(
-                id=message.id,
+                id=message["id"],
                 role="Candidate" if is_candidate else "Astro",
-                content=message.contenido,
+                content=message["contenido"],
                 score=feedback.get("puntaje") if feedback else None,
                 feedback=feedback.get("comentario") if feedback else None,
-                createdAt=message.created_at,
+                createdAt=message["created_at"],
             ))
         return InterviewSessionOut(
-            id=interview.id,
-            targetRole=interview.job_match.nombre,
-            startedAt=interview.fecha_inicio,
-            completedAt=interview.fecha_fin,
-            score=evaluation.puntaje if evaluation else None,
-            feedback=evaluation.resultado.get("resumen") if evaluation else None,
+            id=interview["id"],
+            targetRole=bundle["match"]["nombre"],
+            startedAt=interview["fecha_inicio"],
+            completedAt=interview.get("fecha_fin"),
+            score=evaluation["puntaje"] if evaluation else None,
+            feedback=result.get("resumen") if evaluation else None,
             messages=output_messages,
         )
 
     @staticmethod
-    def _next_timestamp(history: list[MensajeModel]) -> datetime:
+    def _next_timestamp(history: list[dict]) -> datetime:
         now = datetime.now(timezone.utc)
         if history:
-            last = history[-1].created_at
-            if last.tzinfo is None:  # SQLite devuelve fechas sin zona horaria
+            last_value = history[-1]["created_at"]
+            last = datetime.fromisoformat(last_value.replace("Z", "+00:00")) if isinstance(last_value, str) else last_value
+            if last.tzinfo is None:
                 last = last.replace(tzinfo=timezone.utc)
             now = max(now, last + timedelta(milliseconds=1))
         return now
 
     @staticmethod
-    def _context(match: JobMatchModel) -> str:
+    def _context(match: dict, cv: dict | None) -> str:
         return build_context(
-            match.nombre,
-            clip(match.oferta_texto, MAX_OFFER_CHARS),
-            clip(match.cv.parsed_text if match.cv else "", MAX_CV_CHARS),
-            list(match.no_cumple or []),
+            match["nombre"],
+            clip(match["oferta_texto"], MAX_OFFER_CHARS),
+            clip(cv.get("parsed_text", "") if cv else "", MAX_CV_CHARS),
+            list(match.get("no_cumple") or []),
         )
 
-    # --- casos de uso ----------------------------------------------------------
-
-    async def iniciar_entrevista(self, user_id: UUID, plan: str, job_match_id: UUID, tipo: str, seniority: str) -> tuple[EntrevistaModel, str]:
+    async def iniciar_entrevista(
+        self,
+        user_id: UUID,
+        plan: str,
+        job_match_id: UUID,
+        tipo: str,
+        seniority: str,
+    ) -> tuple[dict, str]:
+        normalized_user_id = str(user_id)
         if plan != "premium":
-            used = await self.db.scalar(select(func.count(EntrevistaModel.id)).where(EntrevistaModel.usuario_id == user_id))
-            if (used or 0) >= settings.FREE_INTERVIEW_LIMIT:
+            used_response = await (
+                self.supabase.table("entrevistas")
+                .select("id", count="exact")
+                .eq("usuario_id", normalized_user_id)
+                .execute()
+            )
+            if (used_response.count or 0) >= settings.FREE_INTERVIEW_LIMIT:
                 raise HTTPException(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,
                     detail=f"Alcanzaste el límite de {settings.FREE_INTERVIEW_LIMIT} entrevistas del plan gratuito.",
                 )
-        match = await self.db.scalar(
-            select(JobMatchModel)
-            .options(selectinload(JobMatchModel.cv))
-            .where(JobMatchModel.id == job_match_id, JobMatchModel.usuario_id == user_id)
+        match_response = await (
+            self.supabase.table("job_matches")
+            .select("*")
+            .eq("id", str(job_match_id))
+            .eq("usuario_id", normalized_user_id)
+            .limit(1)
+            .execute()
         )
+        match = first_row(match_response)
         if match is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job Match no encontrado.")
+        cv_response = await (
+            self.supabase.table("cvs")
+            .select("parsed_text")
+            .eq("id", match["cv_id"])
+            .eq("usuario_id", normalized_user_id)
+            .limit(1)
+            .execute()
+        )
+        cv = first_row(cv_response)
 
         turn = await generate_structured(
             interviewer_system_prompt(tipo, seniority, self.total),
-            build_first_turn_prompt(self._context(match), self.total),
+            build_first_turn_prompt(self._context(match, cv), self.total),
             InterviewerTurn,
             premium=plan == "premium",
             temperature=0.7,
             max_tokens=400,
         )
         first_message = turn.mensaje.strip()
-        interview = EntrevistaModel(usuario_id=user_id, job_match_id=job_match_id, tipo=tipo, seniority_inferido=seniority)
-        self.db.add(interview)
-        await self.db.flush()
-        self.db.add(MensajeModel(entrevista_id=interview.id, rol=ROLE_INTERVIEWER, contenido=first_message, created_at=self._next_timestamp([])))
-        await self.db.commit()
-        await self.db.refresh(interview)
+        interview_id = str(uuid4())
+        interview_response = await (
+            self.supabase.table("entrevistas")
+            .insert({
+                "id": interview_id,
+                "usuario_id": normalized_user_id,
+                "job_match_id": str(job_match_id),
+                "tipo": tipo,
+                "seniority_inferido": seniority,
+                "estado": "activa",
+                "fecha_inicio": self._next_timestamp([]).isoformat(),
+                "fecha_fin": None,
+            })
+            .select("*")
+            .execute()
+        )
+        interview = first_row(interview_response)
+        if interview is None:
+            raise HTTPException(status_code=500, detail="No se pudo crear la entrevista.")
+        try:
+            await (
+                self.supabase.table("mensajes")
+                .insert({
+                    "id": str(uuid4()),
+                    "entrevista_id": interview_id,
+                    "rol": ROLE_INTERVIEWER,
+                    "contenido": first_message,
+                    "created_at": self._next_timestamp([]).isoformat(),
+                })
+                .execute()
+            )
+        except Exception:
+            await (
+                self.supabase.table("entrevistas")
+                .delete()
+                .eq("id", interview_id)
+                .eq("usuario_id", normalized_user_id)
+                .execute()
+            )
+            raise
         return interview, first_message
 
-    async def registrar_interaccion(self, user_id: UUID, plan: str, entrevista_id: UUID, contenido: str) -> tuple[str, bool, int]:
-        """Guarda la respuesta del candidato y devuelve (mensaje del entrevistador,
-        finalizada, número de la pregunta actual)."""
-        interview = await self._get_interview(user_id, entrevista_id)
-        if interview.estado != "activa":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Esta entrevista ya terminó. Inicia una nueva para seguir practicando.")
+    async def registrar_interaccion(
+        self,
+        user_id: UUID,
+        plan: str,
+        entrevista_id: UUID,
+        contenido: str,
+    ) -> tuple[str, bool, int]:
+        """Guarda la respuesta del candidato y devuelve mensaje, estado y número actual."""
+        bundle = await self._get_interview(user_id, entrevista_id)
+        interview = bundle["interview"]
+        if interview["estado"] != "activa":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Esta entrevista ya terminó. Inicia una nueva para seguir practicando.",
+            )
 
         history = await self._messages(entrevista_id)
-        answered = sum(1 for m in history if m.rol == ROLE_CANDIDATE) + 1
-        asked = sum(1 for m in history if m.rol == ROLE_INTERVIEWER)
+        answered = sum(1 for message in history if message["rol"] == ROLE_CANDIDATE) + 1
+        asked = sum(1 for message in history if message["rol"] == ROLE_INTERVIEWER)
 
         if answered >= self.total:
             reply, finished, current = CLOSING_MESSAGE, True, self.total
         else:
-            turns = [(m.rol, m.contenido) for m in history] + [(ROLE_CANDIDATE, contenido)]
+            turns = [(message["rol"], message["contenido"]) for message in history]
+            turns.append((ROLE_CANDIDATE, contenido))
             current = min(asked + 1, self.total)
             turn = await generate_structured(
-                interviewer_system_prompt(interview.tipo, interview.seniority_inferido or "Junior", self.total),
-                build_next_turn_prompt(self._context(interview.job_match), _transcript(turns, MAX_TRANSCRIPT_CHARS), current, self.total),
+                interviewer_system_prompt(interview["tipo"], interview.get("seniority_inferido") or "Junior", self.total),
+                build_next_turn_prompt(
+                    self._context(bundle["match"], bundle["cv"]),
+                    _transcript(turns, MAX_TRANSCRIPT_CHARS),
+                    current,
+                    self.total,
+                ),
                 InterviewerTurn,
                 premium=plan == "premium",
                 temperature=0.7,
@@ -225,24 +340,57 @@ class InterviewService:
             )
             reply, finished = turn.mensaje.strip(), False
 
-        # Marcas de tiempo explícitas y estrictamente crecientes: el orden de la conversación
-        # no puede depender de la resolución del reloj (dos filas con la misma hora se desordenan).
         answer_at = self._next_timestamp(history)
-        self.db.add(MensajeModel(entrevista_id=entrevista_id, rol=ROLE_CANDIDATE, contenido=contenido, created_at=answer_at))
-        self.db.add(MensajeModel(entrevista_id=entrevista_id, rol=ROLE_INTERVIEWER, contenido=reply, created_at=answer_at + timedelta(milliseconds=1)))
+        created_messages = [
+            {
+                "id": str(uuid4()),
+                "entrevista_id": str(entrevista_id),
+                "rol": ROLE_CANDIDATE,
+                "contenido": contenido,
+                "created_at": answer_at.isoformat(),
+            },
+            {
+                "id": str(uuid4()),
+                "entrevista_id": str(entrevista_id),
+                "rol": ROLE_INTERVIEWER,
+                "contenido": reply,
+                "created_at": (answer_at + timedelta(milliseconds=1)).isoformat(),
+            },
+        ]
+        await self.supabase.table("mensajes").insert(created_messages).execute()
         if finished:
-            interview.estado = "respondida"  # no admite más mensajes; falta la evaluación
-        await self.db.commit()
+            try:
+                await (
+                    self.supabase.table("entrevistas")
+                    .update({"estado": "respondida"})
+                    .eq("id", str(entrevista_id))
+                    .eq("usuario_id", str(user_id))
+                    .execute()
+                )
+            except Exception:
+                await (
+                    self.supabase.table("mensajes")
+                    .delete()
+                    .in_("id", [message["id"] for message in created_messages])
+                    .execute()
+                )
+                raise
         return reply, finished, current
 
-    async def finalizar_entrevista(self, user_id: UUID, plan: str, entrevista_id: UUID) -> InterviewEvaluation:
-        """Cierra la entrevista y genera (o devuelve, si ya existe) la evaluación final."""
-        interview = await self._get_interview(user_id, entrevista_id)
-        if interview.evaluacion is not None:
-            return InterviewEvaluation.model_validate(interview.evaluacion.resultado)
+    async def finalizar_entrevista(
+        self,
+        user_id: UUID,
+        plan: str,
+        entrevista_id: UUID,
+    ) -> InterviewEvaluation:
+        """Cierra la entrevista y genera (o devuelve) la evaluación final."""
+        bundle = await self._get_interview(user_id, entrevista_id)
+        interview = bundle["interview"]
+        existing_evaluation = bundle["evaluation"]
+        if existing_evaluation is not None:
+            return InterviewEvaluation.model_validate(existing_evaluation["resultado"])
 
-        messages = await self._messages(entrevista_id)
-        pairs = qa_pairs(messages)
+        pairs = qa_pairs(await self._messages(entrevista_id))
         if not pairs:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -250,27 +398,65 @@ class InterviewService:
             )
 
         transcript = _transcript(
-            [turn for q, a in pairs for turn in ((ROLE_INTERVIEWER, q), (ROLE_CANDIDATE, a))],
+            [turn for question, answer in pairs for turn in ((ROLE_INTERVIEWER, question), (ROLE_CANDIDATE, answer))],
             MAX_EVAL_TRANSCRIPT_CHARS,
         )
-        match = interview.job_match
+        match = bundle["match"]
         ai = await generate_structured(
             EVALUATION_SYSTEM_PROMPT,
-            build_evaluation_prompt(match.nombre, clip(match.oferta_texto, MAX_EVAL_OFFER_CHARS), interview.seniority_inferido or "Junior", transcript, len(pairs)),
+            build_evaluation_prompt(
+                match["nombre"],
+                clip(match["oferta_texto"], MAX_EVAL_OFFER_CHARS),
+                interview.get("seniority_inferido") or "Junior",
+                transcript,
+                len(pairs),
+            ),
             AIEvaluation,
             premium=plan == "premium",
             temperature=0.2,
             max_tokens=1800,
         )
-        evaluation = self._build_evaluation(interview.id, pairs, ai)
-
-        interview.estado = "finalizada"
-        interview.fecha_fin = datetime.now(timezone.utc)
-        self.db.add(EvaluacionEntrevistaModel(entrevista_id=interview.id, puntaje=evaluation.puntaje, resultado=evaluation.model_dump(mode="json")))
-        await self.db.commit()
+        evaluation = self._build_evaluation(UUID(interview["id"]), pairs, ai)
+        evaluation_id = str(uuid4())
+        await (
+            self.supabase.table("entrevista_evaluaciones")
+            .insert({
+                "id": evaluation_id,
+                "entrevista_id": str(entrevista_id),
+                "puntaje": evaluation.puntaje,
+                "resultado": evaluation.model_dump(mode="json"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .execute()
+        )
+        try:
+            await (
+                self.supabase.table("entrevistas")
+                .update({
+                    "estado": "finalizada",
+                    "fecha_fin": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", str(entrevista_id))
+                .eq("usuario_id", str(user_id))
+                .execute()
+            )
+        except Exception:
+            await (
+                self.supabase.table("entrevista_evaluaciones")
+                .delete()
+                .eq("id", evaluation_id)
+                .eq("entrevista_id", str(entrevista_id))
+                .execute()
+            )
+            raise
         return evaluation
 
-    def _build_evaluation(self, entrevista_id: UUID, pairs: list[tuple[str, str]], ai: AIEvaluation) -> InterviewEvaluation:
+    def _build_evaluation(
+        self,
+        entrevista_id: UUID,
+        pairs: list[tuple[str, str]],
+        ai: AIEvaluation,
+    ) -> InterviewEvaluation:
         questions: list[QuestionFeedback] = []
         for index, (question, answer) in enumerate(pairs):
             item = ai.preguntas[index] if index < len(ai.preguntas) else None
@@ -281,13 +467,18 @@ class InterviewService:
                 comentario=(item.comentario if item else "") or "Sin comentario específico.",
                 sugerencia=(item.sugerencia if item else "") or "",
             ))
-        # El puntaje global es el promedio de las respuestas: transparente y coherente con el detalle.
-        overall = round(sum(q.puntaje for q in questions) / len(questions)) if questions else ai.puntaje_general
+        overall = round(sum(question.puntaje for question in questions) / len(questions)) if questions else ai.puntaje_general
 
-        by_name = {c.nombre.strip().lower(): c.puntaje for c in ai.competencias}
+        by_name = {competency.nombre.strip().lower(): competency.puntaje for competency in ai.competencias}
         competencies = [
-            CompetencyScore(nombre=name, puntaje=by_name.get(name.lower(), ai.competencias[i].puntaje if i < len(ai.competencias) else overall))
-            for i, name in enumerate(COMPETENCIES)
+            CompetencyScore(
+                nombre=name,
+                puntaje=by_name.get(
+                    name.lower(),
+                    ai.competencias[index].puntaje if index < len(ai.competencias) else overall,
+                ),
+            )
+            for index, name in enumerate(COMPETENCIES)
         ]
         return InterviewEvaluation(
             entrevistaId=entrevista_id,

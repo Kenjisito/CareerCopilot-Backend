@@ -1,23 +1,27 @@
 # Career Copilot API
 
 Backend FastAPI que sirve a `career-copilot-frontend`. La API usa `/api/v1`,
-JWT de Supabase Auth y SQLite local por defecto (o PostgreSQL con `DATABASE_URL`).
+JWT de Supabase Auth y el Data API de Supabase mediante `supabase-py`.
 
 ## Inicio local
 
-1. Crea y activa un entorno Python 3.12:
+1. Crea el archivo local de configuración y activa un entorno Python 3.12:
 
    ```powershell
+   Copy-Item .env.example .env
    py -3.12 -m venv .venv
    .\.venv\Scripts\Activate.ps1
    pip install -r requirements-dev.txt
-   Copy-Item .env.example .env
    ```
 
-2. En `.env`, configura `SUPABASE_URL`, `SUPABASE_KEY` y `OPENAI_API_KEY`
-   (Groq u OpenAI, según `AI_PROVIDER`). `SUPABASE_URL` es necesaria para
-   validar los JWT mediante el endpoint JWKS de Supabase.
-3. Inicia el servidor:
+2. En `.env`, configura `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y
+   `OPENAI_API_KEY` (Groq u OpenAI, según `AI_PROVIDER`). La clave de servicio
+   solo se usa en el backend. `SUPABASE_URL` también permite validar los JWT
+   mediante el endpoint JWKS de Supabase.
+3. Ejecuta [`supabase/migrations/001_setup.sql`](./supabase/migrations/001_setup.sql)
+   en el SQL Editor de Supabase para añadir `emails_generados.tone` y habilitar
+   RLS en las tablas usadas por la API.
+4. Inicia el servidor:
 
    ```powershell
    uvicorn app.main:app --reload --port 8000
@@ -75,14 +79,15 @@ modelo de español automáticamente.
 
 ## Docker Compose
 
-Desde esta carpeta, configura `.env` con las variables anteriores y ejecuta:
+Desde esta carpeta, copia `.env.example` a `.env`, completa las variables
+anteriores y ejecuta:
 
 ```powershell
 docker compose up --build
 ```
 
 Frontend: `http://localhost:5173`; API: `http://localhost:8000/docs`.
-Compose usa SQLite persistido en `data/`.
+Compose conecta la API al Data API de Supabase por HTTPS.
 
 ## Pruebas
 

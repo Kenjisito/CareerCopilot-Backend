@@ -1,0 +1,12 @@
+ALTER TABLE public.emails_generados
+    ADD COLUMN IF NOT EXISTS tone varchar(30) NOT NULL DEFAULT 'professional';
+
+ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.perfiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cvs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_application_status ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.entrevistas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mensajes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.entrevista_evaluaciones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.emails_generados ENABLE ROW LEVEL SECURITY;

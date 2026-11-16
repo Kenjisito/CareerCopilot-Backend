@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 from fastapi import Depends, HTTPException, status
 
 from app.core.config import settings
-from app.db.models import UsuarioModel
+from app.modules.auth.schemas import UserResponse
 from app.shared.dependencies import get_current_user
 
 WINDOW_SECONDS = 3600
@@ -31,7 +31,7 @@ def _check(user_id: str, limit: int) -> None:
     hits.append(now)
 
 
-async def ai_rate_limit(user: UsuarioModel = Depends(get_current_user)) -> None:
+async def ai_rate_limit(user: UserResponse = Depends(get_current_user)) -> None:
     limit = settings.AI_RATE_LIMIT_PREMIUM_PER_HOUR if user.plan == "premium" else settings.AI_RATE_LIMIT_PER_HOUR
     _check(str(user.id), limit)
 

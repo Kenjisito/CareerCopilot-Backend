@@ -1,8 +1,8 @@
 # Pruebas E2E (navegador real, sin servicios externos)
 
 Recorren la página completa con Playwright contra un backend y un frontend locales.
-`mock_services.py` imita Supabase Auth (registro, login, recuperación de contraseña, JWKS ES256)
-y una API compatible con OpenAI, así que **no se gasta cuota ni se necesitan claves**.
+`mock_services.py` imita Supabase Auth, la Data API de tablas y una API compatible
+con OpenAI, así que **no se gasta cuota ni se necesitan credenciales reales**.
 
 ## Cómo correrlas
 ```bash
@@ -12,8 +12,9 @@ pip install -r requirements-dev.txt playwright && playwright install chromium
 python tests/e2e/mock_services.py &
 
 # 2) Backend apuntando al mock
-SUPABASE_URL=http://127.0.0.1:9000 AI_BASE_URL=http://127.0.0.1:9000/v1 OPENAI_API_KEY=test \
-OPENAI_MODEL=m AI_PREMIUM_MODEL=m DATABASE_URL=sqlite+aiosqlite:///./e2e.db \
+SUPABASE_URL=http://127.0.0.1:9000 SUPABASE_SERVICE_ROLE_KEY=test-service-role-key \
+AI_BASE_URL=http://127.0.0.1:9000/v1 OPENAI_API_KEY=test \
+OPENAI_MODEL=m AI_PREMIUM_MODEL=m \
 uvicorn app.main:app --port 8000 &
 
 # 3) Frontend (en su repo) con .env.local:

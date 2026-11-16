@@ -3,12 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import inspect, text
 
 from app.core.config import settings
 from app.core.monitoring import configure_logging
-from app.db.base import Base
-from app.db.session import engine
+from app.core.supabase import create_supabase_client
 from app.modules.ats.router import router as ats_router
 from app.modules.auth.router import router as auth_router
 from app.modules.interview.router import router as interview_router
@@ -22,28 +20,13 @@ from app.modules.ats.cv_documents_router import router as cv_documents_router
 configure_logging()
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-
-        def add_email_tone_column(sync_connection):
-            columns = {column["name"] for column in inspect(sync_connection).get_columns("emails_generados")}
-            if "tone" not in columns:
-                sync_connection.execute(text(
-                    "ALTER TABLE emails_generados ADD COLUMN tone VARCHAR(30) NOT NULL DEFAULT 'professional'"
-                ))
-
-        def add_profile_fields(sync_connection):
-            columns = {column["name"] for column in inspect(sync_connection).get_columns("perfiles")}
-            if "headline" not in columns:
-                sync_connection.execute(text("ALTER TABLE perfiles ADD COLUMN headline VARCHAR(200)"))
-            if "additional_sections" not in columns:
-                sync_connection.execute(text("ALTER TABLE perfiles ADD COLUMN additional_sections JSON"))
-
-        await connection.run_sync(add_email_tone_column)
-        await connection.run_sync(add_profile_fields)
-    yield
-    await engine.dispose()
+async def lifespan(app: FastAPI):
+    client, http_client = await create_supabase_client()
+    app.state.supabase = client
+    try:
+        yield
+    finally:
+        await http_client.aclose()
 
 app = FastAPI(title="CareerCopilot API", version="0.1.0", lifespan=lifespan)
 

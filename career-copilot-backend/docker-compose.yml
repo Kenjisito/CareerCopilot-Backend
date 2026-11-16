@@ -15,11 +15,9 @@ services:
     env_file:
       - .env
     environment:
-      # Para probar localmente no hace falta Postgres: se usa SQLite en ./data
-      DATABASE_URL: sqlite+aiosqlite:///./data/careercopilot.db
+      SUPABASE_URL: ${SUPABASE_URL:?Falta SUPABASE_URL en el .env}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Falta SUPABASE_SERVICE_ROLE_KEY en el .env}
       CORS_ORIGINS: '["http://localhost:5173"]'
-    volumes:
-      - ./data:/app/data
 
   web:
     build:

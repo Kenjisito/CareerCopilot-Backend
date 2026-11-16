@@ -1,16 +1,23 @@
 from __future__ import annotations
-"""Clientes Supabase opcionales para Storage y operaciones administrativas."""
-from supabase import Client, create_client
+
+"""Creación del cliente async de Supabase para el ciclo de vida de la API."""
+from httpx import AsyncClient as HttpxAsyncClient
+from supabase import AsyncClient, acreate_client
+from supabase.lib.client_options import AsyncClientOptions
+
 from app.core.config import settings
 
-# Cliente estándar con clave pública (Anon key)
-supabase_client: Client | None = (
-    create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-    if settings.SUPABASE_URL and settings.SUPABASE_KEY else None
-)
 
-# Cliente administrativo con Service Role (Uso exclusivo interno/backend)
-supabase_admin_client: Client | None = (
-    create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-    if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY else None
-)
+async def create_supabase_client() -> tuple[AsyncClient, HttpxAsyncClient]:
+    http_client = HttpxAsyncClient()
+    options = AsyncClientOptions(
+        auto_refresh_token=False,
+        persist_session=False,
+        httpx_client=http_client,
+    )
+    client = await acreate_client(
+        settings.SUPABASE_URL,
+        settings.SUPABASE_SERVICE_ROLE_KEY,
+        options=options,
+    )
+    return client, http_client

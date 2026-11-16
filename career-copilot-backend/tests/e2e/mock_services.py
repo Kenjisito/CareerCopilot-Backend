@@ -12,6 +12,7 @@ BASE = f"http://127.0.0.1:{PORT}"
 key = ec.generate_private_key(ec.SECP256R1())
 jwk = json.loads(ECAlgorithm.to_jwk(key.public_key())); jwk.update(kid="test-key", alg="ES256", use="sig")
 USERS: dict[str, dict] = {}
+TABLES: dict[str, list[dict]] = {}
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -50,6 +51,112 @@ def user(): return {}
 
 @app.post("/auth/v1/logout")
 def logout(): return Response(status_code=204)
+
+def _rest_filters(r: Request):
+    filters = []
+    for column, expression in r.query_params.multi_items():
+        if column in {"select", "order", "limit", "on_conflict"}:
+            continue
+        if "." not in expression:
+            continue
+        operator, value = expression.split(".", 1)
+        if operator == "in":
+            values = value.strip("()").split(",") if value.strip("()") else []
+            filters.append((operator, column, values))
+        else:
+            filters.append((operator, column, value))
+    return filters
+
+def _rest_matches(row, filters):
+    for operator, column, value in filters:
+        current = row.get(column)
+        if operator == "eq" and str(current) != value:
+            return False
+        if operator == "in" and str(current) not in value:
+            return False
+        if operator == "gte" and (current is None or str(current) < value):
+            return False
+        if operator == "ilike" and str(current).casefold() != value.casefold():
+            return False
+    return True
+
+def _rest_project(row, columns):
+    if columns == "*":
+        return dict(row)
+    return {column: row[column] for column in columns.split(",") if column in row}
+
+def _rest_page(r: Request, rows):
+    result = list(rows)
+    order_values = r.query_params.getlist("order")
+    for order_value in reversed(order_values):
+        for clause in reversed(order_value.split(",")):
+            pieces = clause.split(".")
+            result.sort(key=lambda row: row.get(pieces[0]) or "", reverse=len(pieces) > 1 and pieces[1] == "desc")
+    limit = r.query_params.get("limit")
+    if limit is not None:
+        result = result[:int(limit)]
+    return result
+
+@app.get("/rest/v1/{table}")
+async def rest_select(table: str, r: Request):
+    rows = [row for row in TABLES.get(table, []) if _rest_matches(row, _rest_filters(r))]
+    count = len(rows)
+    page = _rest_page(r, rows)
+    columns = r.query_params.get("select", "*")
+    response = JSONResponse([_rest_project(row, columns) for row in page])
+    if "count=exact" in r.headers.get("prefer", ""):
+        response.headers["content-range"] = f"*/{count}" if count == 0 else f"0-{count - 1}/{count}"
+    return response
+
+@app.post("/rest/v1/{table}")
+async def rest_insert(table: str, r: Request):
+    payload = await r.json()
+    incoming = payload if isinstance(payload, list) else [payload]
+    rows = TABLES.setdefault(table, [])
+    on_conflict = r.query_params.get("on_conflict")
+    ignore_duplicates = "resolution=ignore-duplicates" in r.headers.get("prefer", "")
+    result = []
+    for item in incoming:
+        existing = next((row for row in rows if on_conflict and row.get(on_conflict) == item.get(on_conflict)), None)
+        if existing is None:
+            rows.append(dict(item))
+            result.append(item)
+        elif not ignore_duplicates:
+            existing.update(item)
+            result.append(existing)
+    if "return=representation" in r.headers.get("prefer", ""):
+        columns = r.query_params.get("select", "*")
+        return JSONResponse([_rest_project(row, columns) for row in result], status_code=201)
+    return Response(status_code=201)
+
+@app.patch("/rest/v1/{table}")
+async def rest_update(table: str, r: Request):
+    changes = await r.json()
+    matches = [row for row in TABLES.setdefault(table, []) if _rest_matches(row, _rest_filters(r))]
+    for row in matches:
+        row.update(changes)
+    if "return=representation" in r.headers.get("prefer", ""):
+        columns = r.query_params.get("select", "*")
+        return JSONResponse([_rest_project(row, columns) for row in matches])
+    return Response(status_code=204)
+
+@app.delete("/rest/v1/{table}")
+async def rest_delete(table: str, r: Request):
+    rows = TABLES.setdefault(table, [])
+    matches = [row for row in rows if _rest_matches(row, _rest_filters(r))]
+    TABLES[table] = [row for row in rows if not _rest_matches(row, _rest_filters(r))]
+    if "return=representation" in r.headers.get("prefer", ""):
+        columns = r.query_params.get("select", "*")
+        return JSONResponse([_rest_project(row, columns) for row in matches])
+    return Response(status_code=204)
+
+@app.delete("/auth/v1/admin/users/{user_id}")
+def delete_auth_user(user_id: str):
+    for email, user in list(USERS.items()):
+        if user["id"] == user_id:
+            del USERS[email]
+            break
+    return {}
 
 @app.post("/v1/chat/completions")
 async def chat(r: Request):

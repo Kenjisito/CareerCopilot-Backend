@@ -1,19 +1,15 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 
-# Persistencia simple (sin Supabase/Postgres — el frontend no lo requiere)
-sqlalchemy==2.0.35
-asyncpg>=0.31.0
-aiosqlite==0.20.0
-supabase==2.7.4
+# Cliente async oficial para Supabase Data API.
+supabase==2.34.1
 
-# Auth: hashing de contraseñas + JWT propio (el frontend ya espera un
-# Bearer token guardado en localStorage, no un flujo de Supabase)
+# Autenticación de Supabase Auth y validación de sus JWT.
 # passlib[bcrypt] 1.7.4 no es compatible con bcrypt>=4.1 (bug conocido);
 # se fija la versión de bcrypt explícitamente.
 passlib==1.7.4
 bcrypt==4.0.1
-pyjwt==2.9.0
+pyjwt>=2.15.1
 
 # Extracción de CV (PDF / DOCX)
 pdfplumber==0.11.4

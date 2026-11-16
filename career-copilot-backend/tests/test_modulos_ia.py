@@ -271,19 +271,24 @@ async def test_ats_reintenta_si_la_ia_devuelve_otra_forma(api, monkeypatch):
 
 async def test_ats_diagnostico_antiguo_sin_desglose_sigue_abriendo(api):
     """Los diagnósticos guardados antes de esta versión no tienen scoreBreakdown."""
-    from app.db.models import CVModel
-    from app.db.session import SessionLocal
+    from datetime import datetime, timezone
     import uuid
 
     await api.client.get("/auth/me")
-    async with SessionLocal() as db:
-        cv = CVModel(usuario_id=uuid.UUID(api.user["sub"]), file_name="viejo.pdf", parsed_text="x", score=60, analysis={
+    cv_id = str(uuid.uuid4())
+    await api.supabase.table("cvs").insert({
+        "id": cv_id,
+        "usuario_id": api.user["sub"],
+        "file_name": "viejo.pdf",
+        "parsed_text": "x",
+        "score": 60,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "analysis": {
             "score": 60, "parsedText": "x", "summary": "s",
             "sections": {"contactInfo": True, "workExperience": True, "education": True, "skills": True},
-            "strengths": [], "improvements": [], "missingKeywords": []})
-        db.add(cv)
-        await db.commit()
-        cv_id = cv.id
+            "strengths": [], "improvements": [], "missingKeywords": [],
+        },
+    }).execute()
     r = await api.client.get(f"/ats/{cv_id}")
     assert r.status_code == 200 and r.json()["scoreBreakdown"] is None
 
@@ -513,6 +518,39 @@ async def test_entrevista_completa_con_evaluacion(api, fake_ai):
     assert again.status_code == 200 and again.json() == ev and fake_ai["n"] == calls
 
 
+async def test_inicio_entrevista_borra_la_entrevista_si_falla_el_mensaje(api):
+    from uuid import UUID
+    from app.modules.interview.service import InterviewService
+
+    match_id = await crear_match(api)
+    api.supabase.fail_next[("mensajes", "insert")] = 1
+    with pytest.raises(RuntimeError, match="simulated insert failure"):
+        await InterviewService(api.supabase).iniciar_entrevista(
+            UUID(api.user["sub"]), "free", UUID(match_id), "mixta", "Junior"
+        )
+    assert api.supabase.tables.get("entrevistas", []) == []
+
+
+async def test_finalizar_entrevista_borra_evaluacion_si_falla_actualizacion(api):
+    from uuid import UUID
+    from app.modules.interview.service import InterviewService
+
+    match_id = await crear_match(api)
+    service = InterviewService(api.supabase)
+    interview, _ = await service.iniciar_entrevista(
+        UUID(api.user["sub"]), "free", UUID(match_id), "mixta", "Junior"
+    )
+    await service.registrar_interaccion(
+        UUID(api.user["sub"]), "free", UUID(interview["id"]), "Respuesta con detalle"
+    )
+    api.supabase.fail_next[("entrevistas", "update")] = 1
+    with pytest.raises(RuntimeError, match="simulated update failure"):
+        await service.finalizar_entrevista(
+            UUID(api.user["sub"]), "free", UUID(interview["id"])
+        )
+    assert api.supabase.tables.get("entrevista_evaluaciones", []) == []
+
+
 async def test_entrevista_finalizada_antes_de_tiempo(api):
     jm = await crear_match(api)
     iid = (await api.client.post(f"/interview/start/{jm}", json={})).json()["entrevistaId"]
@@ -580,7 +618,6 @@ async def test_evaluacion_empareja_cada_respuesta_con_su_pregunta_aunque_el_relo
             return frozen
 
     monkeypatch.setattr(interview_service, "datetime", FrozenDatetime)
-    monkeypatch.setattr("app.db.models.utc_now", lambda: frozen)
 
     jm = await crear_match(api)
     counter = {"n": 0}

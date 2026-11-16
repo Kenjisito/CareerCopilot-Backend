@@ -4,10 +4,9 @@ import re
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from supabase import AsyncClient
 
 from app.core.ai_router import generate_structured
-from app.db.models import CVModel
 from app.modules.ats.extract import extract_text
 from app.modules.ats.prompts import ATS_SYSTEM_PROMPT, build_ats_user_prompt
 from app.modules.ats.section_catalog import (
@@ -16,7 +15,7 @@ from app.modules.ats.section_catalog import (
     split_text_chunks,
 )
 from app.modules.ats.schemas import AtsAIResult, ParsedCandidateProfile, ParsedExperience
-from app.modules.ats.service import build_diagnostic
+from app.modules.ats.service import build_diagnostic, save_cv
 from app.shared.text import clip
 
 MAX_PROFILE_CHUNK_CHARS = 7500
@@ -127,7 +126,7 @@ def _merge_additional_sections(
 
 
 async def parse_candidate_profile(
-    db: AsyncSession,
+    supabase: AsyncClient,
     user_id: UUID,
     file_bytes: bytes,
     filename: str,
@@ -171,14 +170,7 @@ async def parse_candidate_profile(
         max_tokens=1200,
     )
     diagnostic = build_diagnostic(text, ats_result)
-    db.add(CVModel(
-        usuario_id=user_id,
-        file_name=filename[:255],
-        parsed_text=text,
-        score=diagnostic.score,
-        analysis=diagnostic.model_dump(mode="json"),
-    ))
-    await db.commit()
+    await save_cv(supabase, user_id, filename, text, diagnostic)
     if not profile.fullName.strip():
         candidate_name = next(
             (

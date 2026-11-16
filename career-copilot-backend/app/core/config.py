@@ -15,7 +15,6 @@ class Settings(BaseSettings):
 
     API_PREFIX: str = "/api/v1"
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
-    DATABASE_URL: str = "sqlite+aiosqlite:///./careercopilot.db"
 
     AI_PROVIDER: str = "groq"  # "groq" | "openai" — ver app/shared/ai_client.py
     AI_BASE_URL: str = ""  # override manual; si está vacío se deriva de AI_PROVIDER
@@ -33,9 +32,9 @@ class Settings(BaseSettings):
     AI_RATE_LIMIT_PER_HOUR: int = 40  # llamadas a IA por usuario y hora (plan free)
     AI_RATE_LIMIT_PREMIUM_PER_HOUR: int = 200
     ADMIN_EMAILS: list[str] = []  # correos que pueden cambiar planes (POST /admin/plan)
-    SUPABASE_URL: str = ""
+    SUPABASE_URL: str
     SUPABASE_KEY: str = ""
-    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str = ""
 
 

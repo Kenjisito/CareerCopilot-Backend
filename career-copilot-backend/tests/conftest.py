@@ -1,11 +1,10 @@
 import os
-import tempfile
 import uuid
+from copy import deepcopy
 
-# Debe ir antes de importar la app: BD temporal y límites conocidos.
-_db = os.path.join(tempfile.mkdtemp(), "test.db")
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_db}"
+# Debe ir antes de importar la app: Supabase y límites conocidos.
 os.environ["SUPABASE_URL"] = "http://localhost:9"
+os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "test-service-role-key"
 os.environ["ADMIN_EMAILS"] = '["admin@test.cl"]'
 os.environ["FREE_INTERVIEW_LIMIT"] = "3"
 os.environ["AI_RATE_LIMIT_PER_HOUR"] = "1000"
@@ -17,9 +16,8 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.core.security import get_current_user_payload
-from app.db.base import Base
-from app.db.session import engine
 from app.main import app
+from app.shared.dependencies import get_supabase
 from app.shared import rate_limit
 
 FAKE_CV = (
@@ -28,13 +26,162 @@ FAKE_CV = (
 )
 
 
+class FakeResponse:
+    def __init__(self, data=None, count=None):
+        self.data = data or []
+        self.count = count
+
+
+class FakeQuery:
+    def __init__(self, client, table):
+        self.client = client
+        self.table_name = table
+        self.action = "select"
+        self.columns = "*"
+        self.count_mode = None
+        self.payload = None
+        self.conflict = None
+        self.ignore_duplicates = False
+        self.filters = []
+        self.orders = []
+        self.row_limit = None
+
+    def select(self, columns="*", count=None, **kwargs):
+        self.columns = columns
+        self.count_mode = count
+        return self
+
+    def insert(self, payload, **kwargs):
+        self.action = "insert"
+        self.payload = payload
+        return self
+
+    def upsert(self, payload, on_conflict=None, ignore_duplicates=False, **kwargs):
+        self.action = "upsert"
+        self.payload = payload
+        self.conflict = on_conflict
+        self.ignore_duplicates = ignore_duplicates
+        return self
+
+    def update(self, payload, **kwargs):
+        self.action = "update"
+        self.payload = payload
+        return self
+
+    def delete(self, **kwargs):
+        self.action = "delete"
+        return self
+
+    def eq(self, column, value):
+        self.filters.append(("eq", column, value))
+        return self
+
+    def in_(self, column, values):
+        self.filters.append(("in", column, values))
+        return self
+
+    def ilike(self, column, value):
+        self.filters.append(("ilike", column, value))
+        return self
+
+    def gte(self, column, value):
+        self.filters.append(("gte", column, value))
+        return self
+
+    def order(self, column, desc=False, **kwargs):
+        self.orders.append((column, desc))
+        return self
+
+    def limit(self, value):
+        self.row_limit = value
+        return self
+
+    def _matches(self, row):
+        for operation, column, value in self.filters:
+            current = row.get(column)
+            if operation == "eq" and current != value:
+                return False
+            if operation == "in" and current not in value:
+                return False
+            if operation == "ilike" and str(current).casefold() != str(value).casefold():
+                return False
+            if operation == "gte" and (current is None or current < value):
+                return False
+        return True
+
+    def _project(self, row):
+        if self.columns == "*":
+            return deepcopy(row)
+        return {key: deepcopy(row[key]) for key in self.columns.split(",") if key in row}
+
+    async def execute(self):
+        failure_key = (self.table_name, self.action)
+        if self.client.fail_next.get(failure_key, 0):
+            self.client.fail_next[failure_key] -= 1
+            raise RuntimeError(f"simulated {self.action} failure")
+        rows = self.client.tables.setdefault(self.table_name, [])
+        if self.action == "insert":
+            inserted = self.payload if isinstance(self.payload, list) else [self.payload]
+            rows.extend(deepcopy(inserted))
+            return FakeResponse([self._project(row) for row in inserted])
+        if self.action == "upsert":
+            inserted = self.payload if isinstance(self.payload, list) else [self.payload]
+            result = []
+            for incoming in inserted:
+                existing = next(
+                    (row for row in rows if self.conflict and row.get(self.conflict) == incoming.get(self.conflict)),
+                    None,
+                )
+                if existing is None:
+                    rows.append(deepcopy(incoming))
+                    result.append(incoming)
+                elif not self.ignore_duplicates:
+                    existing.update(deepcopy(incoming))
+                    result.append(existing)
+            return FakeResponse([self._project(row) for row in result])
+
+        matched = [row for row in rows if self._matches(row)]
+        if self.action == "update":
+            for row in matched:
+                row.update(deepcopy(self.payload))
+        if self.action == "delete":
+            self.client.tables[self.table_name] = [row for row in rows if not self._matches(row)]
+        count = len(matched) if self.count_mode == "exact" else None
+        if self.orders:
+            for column, descending in reversed(self.orders):
+                matched.sort(key=lambda row: row.get(column) or "", reverse=descending)
+        if self.row_limit is not None:
+            matched = matched[:self.row_limit]
+        return FakeResponse([self._project(row) for row in matched], count)
+
+
+class FakeAdmin:
+    async def delete_user(self, user_id):
+        return None
+
+
+class FakeAuth:
+    def __init__(self):
+        self.admin = FakeAdmin()
+
+
+class FakeSupabase:
+    def __init__(self):
+        self.tables = {}
+        self.fail_next = {}
+        self.auth = FakeAuth()
+
+    def table(self, name):
+        return FakeQuery(self, name)
+
+
 @pytest_asyncio.fixture(autouse=True)
-async def _db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+async def _supabase():
+    client = FakeSupabase()
+    app.dependency_overrides[get_supabase] = lambda: client
     rate_limit.reset()
-    yield
+    yield client
+    app.dependency_overrides.clear()
 
 
 def fake_response(system_prompt: str) -> dict:
@@ -123,8 +270,9 @@ def fake_ai(monkeypatch):
 
 
 class Session:
-    def __init__(self, client: AsyncClient):
+    def __init__(self, client: AsyncClient, supabase: FakeSupabase):
         self.client = client
+        self.supabase = supabase
         self.user = None
 
     def login(self, email="user@test.cl", name="Usuario Test"):
@@ -136,9 +284,9 @@ class Session:
 
 
 @pytest_asyncio.fixture
-async def api():
+async def api(_supabase):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test/api/v1") as client:
-        s = Session(client)
+        s = Session(client, _supabase)
         s.login()
         yield s
     app.dependency_overrides.clear()
