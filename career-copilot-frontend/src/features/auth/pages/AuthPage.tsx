@@ -40,7 +40,20 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
     <main className="auth-page">
       <header className="auth-hero">
         <div className="auth-orbit" aria-hidden="true" />
-        <div className="auth-stars" aria-hidden="true" />
+        <span className="module-hero-stars" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
         <Link className="auth-brand" to="/" aria-label="Career Copilot, volver al inicio">
           <Brand light />
         </Link>
