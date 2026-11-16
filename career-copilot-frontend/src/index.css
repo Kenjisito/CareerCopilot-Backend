@@ -175,6 +175,40 @@ footer { min-height: 150px; padding: 45px max(24px, calc((100vw - 1160px)/2)); b
 footer p { margin: 0; }
 footer div { display: flex; gap: 25px; }
 
+.auth-page { min-height: 100vh; overflow: hidden; background: #f7f8fc; }
+.auth-hero { position: relative; isolation: isolate; min-height: 380px; padding: 56px 24px 110px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; overflow: hidden; color: #fff; text-align: center; background: linear-gradient(120deg, #171b4a 0%, #302064 55%, #5437be 100%); }
+.auth-orbit { position: absolute; z-index: -1; top: -560px; left: 50%; width: 720px; height: 720px; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; box-shadow: 0 0 0 34px rgba(255,255,255,.045), 0 0 0 82px rgba(255,255,255,.035); transform: translateX(-50%); pointer-events: none; }
+.auth-stars { position: absolute; z-index: -1; inset: 0; pointer-events: none; background-image: radial-gradient(circle at 8% 72%, rgba(255,255,255,.85) 0 1px, transparent 2px), radial-gradient(circle at 18% 45%, rgba(219,211,255,.8) 0 1px, transparent 2px), radial-gradient(circle at 28% 83%, rgba(255,255,255,.72) 0 1.5px, transparent 2.5px), radial-gradient(circle at 39% 57%, rgba(219,211,255,.72) 0 1px, transparent 2px), radial-gradient(circle at 57% 77%, rgba(255,255,255,.75) 0 1px, transparent 2px), radial-gradient(circle at 67% 49%, rgba(219,211,255,.8) 0 1.5px, transparent 2.5px), radial-gradient(circle at 82% 72%, rgba(255,255,255,.8) 0 1px, transparent 2px), radial-gradient(circle at 93% 39%, rgba(219,211,255,.72) 0 1px, transparent 2px); }
+.auth-stars::before, .auth-stars::after { position: absolute; content: ""; width: 9px; height: 9px; background: rgba(235,229,255,.9); clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); filter: drop-shadow(0 0 7px rgba(255,255,255,.7)); }
+.auth-stars::before { top: 20%; left: 76%; }
+.auth-stars::after { right: 24%; bottom: 17%; width: 6px; height: 6px; }
+.auth-brand, .auth-tagline, .auth-home-link { position: relative; z-index: 1; }
+.auth-brand .brand { gap: 15px; color: #fff; font-size: clamp(42px, 7vw, 60px); font-weight: 600; letter-spacing: -.045em; }
+.auth-brand .brand-mark { width: 68px; height: 68px; border-radius: 20px 20px 20px 7px; box-shadow: 0 8px 26px rgba(15,10,52,.24); }
+.auth-brand .brand-mark svg { width: 34px; height: 34px; }
+.auth-tagline { margin: 0; color: rgba(246,244,255,.82); font-size: 15px; line-height: 1.5; }
+.auth-home-link { position: absolute; top: 26px; right: 34px; color: rgba(255,255,255,.86); font-size: 12px; font-weight: 700; }
+.auth-home-link:hover { color: #fff; }
+.auth-content { position: relative; z-index: 2; min-height: calc(100vh - 326px); margin-top: -54px; padding: 44px 24px 56px; border-radius: 32px 32px 0 0; background: #fff; }
+.auth-card { width: min(100%, 500px); margin: 0 auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.auth-card-heading { margin-bottom: 27px; }
+.auth-card-heading h1 { margin: 0 0 10px; color: var(--navy-deep); font-size: 30px; line-height: 1.2; letter-spacing: -.045em; }
+.auth-card-heading p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.auth-card > label { display: block; margin-top: 18px; color: #454d6c; font-size: 13px; }
+.auth-card input { height: 52px; margin-top: 9px; padding: 0 15px; border-color: #e0e3ed; border-radius: 13px; background: #f9faff; font-size: 14px; }
+.auth-card input:focus { background: #fff; }
+.auth-card label small { display: block; margin-top: 5px; color: var(--red); font-size: 11px; }
+.auth-password-field { position: relative; margin-top: 9px; }
+.auth-password-field input { margin-top: 0; padding-right: 52px; }
+.auth-password-toggle { position: absolute; top: 50%; right: 9px; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; transform: translateY(-50%); border-radius: 9px; color: var(--muted); background: transparent; }
+.auth-password-toggle:hover { color: var(--purple); background: var(--purple-soft); }
+.auth-content > .auth-card > small[role="alert"] { display: block; min-height: 0; margin-top: 5px; color: var(--red); font-size: 11px; }
+.auth-card p[role="alert"] { margin: 12px 0; color: var(--red); font-size: 12px; }
+.auth-card .btn-primary { width: 100%; min-height: 54px; margin-top: 23px; border-radius: 999px; background: linear-gradient(110deg, var(--purple), var(--purple-dark)); box-shadow: 0 10px 24px rgba(108,75,232,.24); }
+.auth-card .btn-primary:hover { background: linear-gradient(110deg, #795bed, #6041d4); }
+.auth-card > p:last-child { margin: 20px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
+.auth-card > p:last-child a { color: var(--purple); font-weight: 800; }
+
 .onboarding { min-height: 100vh; background: #f7f8fc; }
 .onboarding-header { height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; background: #fff; border-bottom: 1px solid var(--line); }
 .onboarding-progress { height: 4px; background: #e9eaf2; }
@@ -491,6 +525,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--purple); }
 @media (max-width: 720px) {
   .nav-actions .text-link, .landing-nav .btn { display: none; }
   .landing-nav { height: 68px; }
+  .auth-hero { min-height: 330px; padding: 66px 20px 104px; }.auth-orbit { top: -300px; width: 440px; height: 440px; }.auth-home-link { top: 17px; right: 18px; font-size: 11px; }.auth-tagline { max-width: 300px; font-size: 13px; }.auth-content { min-height: calc(100vh - 282px); margin-top: -48px; padding: 34px 22px 44px; border-radius: 26px 26px 0 0; }.auth-card-heading h1 { font-size: 27px; }.auth-card-heading p { font-size: 13px; }
   .hero { padding: 45px 20px 70px; gap: 25px; }.hero h1 { font-size: 44px; }.hero-copy > p { font-size: 15px; }.hero-actions { flex-direction: column; }.astro-stage { height: 380px; }.astro-large { width: 300px; height: 300px; }.floating-card { transform: scale(.85); }.match-float { left: -14px; }.insight-float { right: -12px; }
   .steps { padding: 75px 20px; }.step-grid { grid-template-columns: 1fr; }.step-line { display: none; }.step-card { max-width: 380px; margin: 0 auto; }
   .features { padding: 75px 20px; gap: 40px; }.feature-grid { grid-template-columns: 1fr; }.feature-wide { grid-column: auto; padding-right: 28px; min-height: 300px; }.mini-document { opacity: .25; right: -40px; }

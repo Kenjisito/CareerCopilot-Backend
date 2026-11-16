@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { Link } from "react-router-dom"
@@ -5,12 +6,13 @@ import { useAuth } from "@/features/auth/useAuth"
 import { useSignIn, useSignUp } from "@/features/auth/hooks"
 import { loginSchema, signUpSchema } from "@/features/auth/schemas"
 import type { AuthCredentials, SignUpCredentials } from "@/features/auth/types"
-import { Brand, Button } from "@/shared/ui"
+import { Brand, Button, Icon } from "@/shared/ui"
 
 export function AuthPage({ mode }: { mode: "login" | "register" }) {
   const auth = useAuth()
   const login = useSignIn()
   const register = useSignUp()
+  const [showPassword, setShowPassword] = useState(false)
   const isRegister = mode === "register"
   const form = useForm<AuthCredentials & Partial<Pick<SignUpCredentials, "fullName">>>({
     resolver: zodResolver(isRegister ? signUpSchema : loginSchema),
@@ -35,19 +37,26 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
   })
 
   return (
-    <main className="onboarding">
-      <header className="onboarding-header">
-        <Link to="/" aria-label="Volver al inicio"><Brand /></Link>
-        <Link className="help-link" to="/">Volver al inicio</Link>
+    <main className="auth-page">
+      <header className="auth-hero">
+        <div className="auth-orbit" aria-hidden="true" />
+        <div className="auth-stars" aria-hidden="true" />
+        <Link className="auth-brand" to="/" aria-label="Career Copilot, volver al inicio">
+          <Brand light />
+        </Link>
+        <p className="auth-tagline">Tu carrera, lista para despegar</p>
+        <Link className="auth-home-link" to="/">Volver al inicio</Link>
       </header>
-      <section className="onboarding-main" style={{ maxWidth: 560 }}>
-        <div className="onboarding-top">
-          <h1>{isRegister ? "Crea tu cuenta" : "Inicia sesión"}</h1>
-          <p>
-            {isRegister ? "Tu copiloto de carrera te espera." : "Continúa tu búsqueda con Astro."}
-          </p>
-        </div>
-        <form className="form-panel" onSubmit={(event) => void submit(event)}>
+      <section className="auth-content" aria-labelledby="auth-title">
+        <form className="auth-card" onSubmit={(event) => void submit(event)}>
+          <div className="auth-card-heading">
+            <h1 id="auth-title">{isRegister ? "Crea tu cuenta" : "Inicia sesión"}</h1>
+            <p>
+              {isRegister
+                ? "Tu copiloto de carrera te espera."
+                : "Ingresa tus credenciales para continuar con Career Copilot."}
+            </p>
+          </div>
           {isRegister && (
             <label>
               Nombre completo
@@ -64,15 +73,26 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
             />
             <small role="alert">{form.formState.errors.email?.message}</small>
           </label>
-          <label>
-            Contraseña
+          <label htmlFor="auth-password">Contraseña</label>
+          <div className="auth-password-field">
             <input
-              type="password"
+              id="auth-password"
+              type={showPassword ? "text" : "password"}
               autoComplete={isRegister ? "new-password" : "current-password"}
               {...form.register("password")}
             />
-            <small role="alert">{form.formState.errors.password?.message}</small>
-          </label>
+            <button
+              className="auth-password-toggle"
+              type="button"
+              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-controls="auth-password"
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((visible) => !visible)}
+            >
+              <Icon name={showPassword ? "eyeOff" : "eye"} size={20} />
+            </button>
+          </div>
+          <small role="alert">{form.formState.errors.password?.message}</small>
           {error && <p role="alert">{error.message}</p>}
           {auth.error && <p role="alert">{auth.error}</p>}
           <Button type="submit" disabled={login.isPending || register.isPending}>

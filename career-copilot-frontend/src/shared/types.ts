@@ -12,6 +12,8 @@ export type IconName =
   | "document"
   | "download"
   | "edit"
+  | "eye"
+  | "eyeOff"
   | "gmail"
   | "history"
   | "mail"
