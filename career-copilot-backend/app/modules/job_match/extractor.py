@@ -54,7 +54,10 @@ def _unprocessable(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
 
-PASTE_HINT = "Copia el texto de la oferta y pégalo en el campo de requisitos."
+PASTE_HINT = (
+    "Abre la oferta en tu navegador, selecciona todo el texto (Ctrl+A), cópialo (Ctrl+C) y pégalo "
+    "en el campo de la oferta: Astro la ordena sola."
+)
 
 
 # --- Validación de URL --------------------------------------------------------
@@ -282,26 +285,64 @@ async def extract_job_offer(url: str) -> JobExtractResult:
     title, text = visible_text(html)
     if len(text) < MIN_OFFER_CHARS:
         raise _unprocessable(
-            "No encontramos el texto de la oferta en esa página (puede requerir iniciar sesión "
-            f"o cargarse con JavaScript). {PASTE_HINT}"
+            "Este sitio carga la oferta con JavaScript o pide iniciar sesión, así que no podemos "
+            f"leerla desde el enlace. {PASTE_HINT}"
         )
+    return await _extract_with_ai(text, page_title=title, url=final_url, fuente="ia")
 
+
+# Palabras que suelen marcar dónde empieza el contenido de una oferta.
+_OFFER_MARKERS = re.compile(
+    r"descripci[oó]n del (cargo|puesto|empleo|aviso)|funciones|responsabilidades|requisitos|"
+    r"requerimientos|qu[eé] buscamos|qu[eé] ofrecemos|beneficios|experiencia|job description|"
+    r"responsibilities|requirements|qualifications",
+    re.IGNORECASE,
+)
+
+
+def focus_offer_text(text: str, limit: int = MAX_PAGE_CHARS_FOR_AI) -> str:
+    """Si el texto es más largo que `limit` (p. ej. una página entera copiada con
+    Ctrl+A), se queda con la ventana donde aparecen las palabras típicas de una
+    oferta, en vez de cortar siempre por el principio (que suele ser el menú)."""
+    if len(text) <= limit:
+        return text
+    marker = _OFFER_MARKERS.search(text)
+    start = max(0, marker.start() - 1500) if marker else 0
+    start = min(start, max(0, len(text) - limit))
+    return clip(text[start:], limit)
+
+
+async def _extract_with_ai(text: str, *, page_title: str, url: str, fuente: str) -> JobExtractResult:
     extraction = await generate_structured(
         JOB_EXTRACT_SYSTEM_PROMPT,
-        build_job_extract_user_prompt(final_url, title, clip(text, MAX_PAGE_CHARS_FOR_AI)),
+        build_job_extract_user_prompt(url or "(texto pegado por el usuario)", page_title, focus_offer_text(text)),
         JobOfferExtraction,
         temperature=0.1,
         max_tokens=2000,
     )
     offer = normalize_whitespace(extraction.oferta_texto)
     if not extraction.es_oferta or len(offer) < MIN_OFFER_CHARS // 2:
-        raise _unprocessable(f"Esa página no parece contener una oferta laboral concreta. {PASTE_HINT}")
+        if url:
+            raise _unprocessable(f"Esa página no parece contener una oferta laboral concreta. {PASTE_HINT}")
+        raise _unprocessable(
+            "El texto pegado no parece contener una oferta laboral concreta. "
+            "Asegúrate de copiar la página de la oferta (no el listado de búsqueda)."
+        )
     company = (extraction.empresa or "").strip() or None
     header = f"Empresa: {company}\n\n" if company and company.lower() not in offer.lower()[:300] else ""
     return JobExtractResult(
-        nombre=(extraction.nombre.strip() or title or "Oferta laboral")[:255],
+        nombre=(extraction.nombre.strip() or page_title or "Oferta laboral")[:255],
         empresa=company,
         ofertaTexto=clip(header + offer, MAX_OFFER_CHARS),
-        fuente="ia",
-        url=final_url,
+        fuente=fuente,
+        url=url,
     )
+
+
+async def extract_job_offer_from_text(texto: str) -> JobExtractResult:
+    """Ordena una oferta copiada y pegada desde cualquier página (con menús,
+    avisos u otras ofertas alrededor): devuelve título, empresa y texto limpio."""
+    text = normalize_whitespace(texto)
+    if len(text) < MIN_OFFER_CHARS:
+        raise _unprocessable("El texto pegado es muy corto para ser una oferta. Copia la página completa de la oferta.")
+    return await _extract_with_ai(text, page_title="", url="", fuente="texto")

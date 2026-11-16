@@ -46,11 +46,16 @@ class JobExtractPayload(BaseModel):
     url: HttpUrl
 
 
+class JobExtractTextPayload(BaseModel):
+    """Texto copiado de cualquier página (puede incluir menús y otro contenido)."""
+    texto: str = Field(min_length=1, max_length=100_000)
+
+
 class JobExtractResult(BaseModel):
     nombre: str
     empresa: str | None = None
     ofertaTexto: str
-    fuente: str  # "datos-estructurados" | "ia"
+    fuente: str  # "datos-estructurados" | "ia" (desde URL) | "texto" (pegado)
     url: str
 
 

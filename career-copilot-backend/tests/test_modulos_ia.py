@@ -598,3 +598,84 @@ async def test_evaluacion_empareja_cada_respuesta_con_su_pregunta_aunque_el_relo
     ev = (await api.client.post(f"/interview/{iid}/finish")).json()
     assert [(q["pregunta"], q["respuesta"]) for q in ev["preguntas"]] == [
         ("Pregunta P1", "Respuesta R1"), ("Pregunta P2", "Respuesta R2"), ("Pregunta P3", "Respuesta R3")]
+
+
+async def test_job_match_guarda_recomendaciones_y_se_ven_al_reabrir(api):
+    """Las recomendaciones se mostraban solo justo después de analizar: el detalle
+    guardado tenía únicamente el resumen."""
+    jm = await crear_match(api)
+    detail = (await api.client.get(f"/job-match/{jm}")).json()
+    assert detail["resumen"].startswith("Buen match")
+    assert "• Destaca tu experiencia con FastAPI" in detail["resumen"]
+    listed = (await api.client.get("/job-match")).json()
+    assert listed[0]["resumen"] == detail["resumen"]
+
+
+# --- Oferta copiada y pegada desde cualquier página ---------------------------------
+
+TEXTO_PEGADO = (
+    "Inicio Empleos Empresas Ingresar Publicar aviso\n"
+    "Jefe de turno RM - Under Pizza\nUnder Pizza · Santiago · Presencial\n"
+    "Descripción del puesto\nBuscamos jefe de turno para liderar el equipo de cocina y atención. "
+    "Requisitos: 2 años de experiencia liderando equipos en gastronomía, manejo de caja e inventario.\n"
+    "Beneficios: colación y bono por desempeño.\n"
+    "Avisos similares: Cajero Part Time · Garzón · Ayudante de cocina\n© 2026 Portal"
+)
+
+
+async def test_extraer_desde_texto_pegado(api, fake_ai):
+    r = await api.client.post("/job-match/extract-text", json={"texto": TEXTO_PEGADO})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["fuente"] == "texto" and body["url"] == ""
+    assert body["nombre"] == "Analista de Datos"  # respuesta de la IA simulada
+    system, user = fake_ai["prompts"][-1]
+    assert '"es_oferta"' in system and "Jefe de turno RM" in user and "texto pegado" in user
+
+
+async def test_extraer_desde_texto_muy_corto_es_422(api):
+    r = await api.client.post("/job-match/extract-text", json={"texto": "Jefe de turno"})
+    assert r.status_code == 422 and "muy corto" in r.json()["detail"]
+
+
+async def test_extraer_desde_texto_que_no_es_oferta_es_422(api, monkeypatch):
+    async def no_offer(system_prompt, user_prompt, model=None, **kwargs):
+        return {"es_oferta": False, "nombre": "", "empresa": None, "oferta_texto": ""}
+
+    monkeypatch.setattr("app.core.ai_router.generate_json", no_offer)
+    r = await api.client.post("/job-match/extract-text", json={"texto": "Listado de empleos " * 20})
+    assert r.status_code == 422 and "no parece contener una oferta" in r.json()["detail"]
+
+
+def test_texto_enorme_se_centra_en_la_oferta():
+    from app.modules.job_match.extractor import focus_offer_text
+
+    menu = "Menú Inicio Empleos Empresas " * 600  # ~17.000 caracteres de navegación
+    oferta = "Requisitos: Python avanzado y 3 años de experiencia. " * 20
+    focused = focus_offer_text(menu + oferta, limit=4000)
+    assert "Requisitos: Python avanzado" in focused
+    assert len(focused) <= 4100
+
+
+async def test_perfil_asigna_id_unico_a_cada_experiencia(api):
+    """Sin id, el editor de CV no distinguía las experiencias (editar una podía
+    sobrescribir las demás) y React avisaba de listas sin key."""
+    await api.client.get("/auth/me")
+    body = {"fullName": "Ana Pérez", "email": "user@test.cl", "experiences": [
+        {"role": "Dev", "company": "Acme", "startDate": "2023-01"},
+        {"role": "QA", "company": "Beta", "startDate": "2021-01"},
+        {"id": "mi-id", "role": "Intern", "company": "Gamma", "startDate": "2020-01"},
+    ]}
+    exps = (await api.client.put("/profile", json=body)).json()["experiences"]
+    ids = [e["id"] for e in exps]
+    assert all(ids) and len(set(ids)) == 3 and ids[2] == "mi-id"
+    # Los ids se conservan al volver a leer el perfil.
+    assert [e["id"] for e in (await api.client.get("/profile")).json()["experiences"]] == ids
+
+
+def test_experiencias_antiguas_sin_id_reciben_uno_estable():
+    from app.modules.profile.router import _with_ids
+
+    legacy = [{"role": "Dev"}, {"role": "QA", "id": ""}]
+    assert [e["id"] for e in _with_ids(legacy)] == ["exp-0", "exp-1"]
+    assert [e["id"] for e in _with_ids(legacy)] == ["exp-0", "exp-1"]

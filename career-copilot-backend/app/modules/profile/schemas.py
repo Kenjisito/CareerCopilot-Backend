@@ -8,6 +8,8 @@ from app.shared.cv_profile import validate_additional_sections
 
 
 class ExperiencePayload(BaseModel):
+    # El frontend identifica cada experiencia por su id (para editarla sin tocar las demás).
+    id: str | None = Field(default=None, max_length=64)
     role: str = Field(default="", max_length=200)
     company: str = Field(default="", max_length=200)
     startDate: str = Field(default="", max_length=40)
