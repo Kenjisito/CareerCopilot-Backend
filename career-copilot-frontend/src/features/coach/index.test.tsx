@@ -78,6 +78,39 @@ afterEach(() => {
 })
 
 describe("CoachModule", () => {
+  it("shows Astro's face next to interview messages", async () => {
+    vi.mocked(useInterview).mockReturnValue({
+      data: {
+        id: "session-1",
+        targetRole: "Diseñador UX",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+        score: null,
+        feedback: null,
+        messages: [{
+          id: "message-1",
+          role: "Astro",
+          content: "Cuéntame sobre un proyecto.",
+          score: null,
+          feedback: null,
+          createdAt: "2026-01-01T00:00:00Z",
+        }],
+      },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useInterview>)
+    createMutation.mutate.mockImplementation((_request, callbacks) => {
+      callbacks?.onSuccess?.({ id: "session-1" })
+    })
+    const user = userEvent.setup()
+    const { container } = render(<CoachModule setActive={vi.fn()} />)
+
+    await user.click(screen.getByRole("button", { name: "Comenzar entrevista" }))
+    await waitFor(() => {
+      expect(container.querySelector(".chat-message.astro .astro-face .astro-character")).toBeTruthy()
+    })
+  })
+
   it("requires a saved JobMatch analysis to start practice", async () => {
     vi.mocked(useJobMatches).mockReturnValue({
       data: [],

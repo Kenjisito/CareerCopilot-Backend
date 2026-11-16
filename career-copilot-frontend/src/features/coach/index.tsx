@@ -83,8 +83,8 @@ function ChatBubble({ message }: { message: InterviewMessageResponse }) {
   return (
     <div className={`chat-message ${message.role === "Astro" ? "astro" : "user"}`}>
       {message.role === "Astro" && (
-        <div className="tiny-astro">
-          <Icon name="astronaut" />
+        <div className="tiny-astro astro-face">
+          <Astro size="small" pose="interviewer" />
         </div>
       )}
       <div>

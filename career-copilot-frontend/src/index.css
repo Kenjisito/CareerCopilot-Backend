@@ -448,6 +448,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--purple); }
 .chat-message { display: flex; gap: 9px; margin-bottom: 20px; }
 .chat-message.user { justify-content: flex-end; padding-left: 15%; }.chat-message.astro { padding-right: 15%; }
 .tiny-astro { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; color: #fff; background: var(--purple); border-radius: 9px; }
+.tiny-astro.astro-face { display: block; overflow: hidden; border-radius: 50%; }
+.tiny-astro.astro-face .astro-character { width: 60px; height: 60px; margin: -5px 0 0 -15px; animation: none; }
 .bubble { padding: 12px 14px; background: #fff; border: 1px solid var(--line); border-radius: 4px 14px 14px 14px; color: #434b67; font-size: 11px; line-height: 1.6; }
 .user .bubble { color: #fff; background: var(--navy); border-color: var(--navy); border-radius: 14px 4px 14px 14px; }
 .feedback-box { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; margin-top: 8px; padding: 10px; background: var(--green-soft); border-radius: 10px; }
