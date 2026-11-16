@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     INTERVIEW_QUESTIONS: int = 6  # preguntas por simulación de entrevista
     LOG_LEVEL: str = "INFO"
     FREE_MATCH_LIMIT: int = 5
-    FREE_INTERVIEW_LIMIT: int = 3
+    FREE_INTERVIEW_LIMIT: int = 10
     AI_RATE_LIMIT_PER_HOUR: int = 40  # llamadas a IA por usuario y hora (plan free)
     AI_RATE_LIMIT_PREMIUM_PER_HOUR: int = 200
     ADMIN_EMAILS: list[str] = []  # correos que pueden cambiar planes (POST /admin/plan)
