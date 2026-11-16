@@ -1,19 +1,90 @@
 import { useEffect, useRef, useState } from "react"
-import { useAnalyzeJobMatch, useJobMatch, useJobMatches } from "@/features/jobmatch/hooks"
+import {
+  useAnalyzeJobMatch,
+  useExtractJobOffer,
+  useJobMatch,
+  useJobMatches,
+} from "@/features/jobmatch/hooks"
+import { fieldLimits, MIN_DESCRIPTION_LENGTH } from "@/features/jobmatch/api"
 import type { AnalyzeJobRequest } from "@/features/jobmatch/types"
 import { Button, Icon } from "@/shared/ui"
 import { ModuleHeader } from "@/shared/ModuleHeader"
 import { EmptyState, ErrorState, Skeleton } from "@/shared/components"
 import { ApiError } from "@/shared/lib/apiError"
 
+/** Errores de un campo. Acepta varios nombres: los del frontend (JobTitle) y los
+ *  que usa el backend FastAPI (nombre, empresa, ofertaTexto). */
 function getFieldErrors(
   errors: Record<string, string[]> | undefined,
-  field: string,
+  ...fields: string[]
 ): string[] {
-  const matchingEntry = Object.entries(errors ?? {}).find(
-    ([name]) => name.toLowerCase() === field.toLowerCase(),
+  const wanted = fields.map((field) => field.toLowerCase())
+  return Object.entries(errors ?? {})
+    .filter(([name]) => wanted.includes(name.toLowerCase()))
+    .flatMap(([, messages]) => messages)
+}
+
+/** A partir de este largo, un texto pegado en la descripción se ordena con Astro automáticamente. */
+const AUTO_TIDY_MIN_PASTE = 300
+
+/** Progreso, error o éxito de la lectura de una oferta (desde enlace o texto pegado). */
+function ExtractFeedback({
+  extract,
+  notice,
+  pendingLabel = "Astro está leyendo la oferta...",
+  onUndo,
+}: {
+  extract: ReturnType<typeof useExtractJobOffer>
+  notice: string | null
+  pendingLabel?: string
+  onUndo?: () => void
+}) {
+  if (extract.isPending) {
+    return (
+      <div className="jobmatch-progress" role="status" aria-live="polite">
+        <span>{pendingLabel}</span>
+        <span className="jobmatch-progress-track"><i /></span>
+      </div>
+    )
+  }
+  if (extract.isError) {
+    return (
+      <p className="jobmatch-import-error" role="alert">
+        {extract.error.message}
+        {/* El backend ya explica cómo copiar y pegar en la mayoría de sus errores. */}
+        {!/p[ée]ga/i.test(extract.error.message) &&
+          " Puedes copiar el texto de la oferta y pegarlo en la descripción."}
+      </p>
+    )
+  }
+  if (!notice) return null
+  return (
+    <p className="jobmatch-import-success" role="status">
+      <Icon name="check" size={15} />
+      <span>
+        {notice}
+        {onUndo && (
+          <>
+            {" "}
+            <button type="button" className="jobmatch-link-button" onClick={onUndo}>
+              Deshacer
+            </button>
+          </>
+        )}
+      </span>
+    </p>
   )
-  return matchingEntry?.[1] ?? []
+}
+
+function isHttpUrl(value: string): boolean {
+  const text = value.trim()
+  if (!text || /\s/.test(text)) return false
+  try {
+    const url = new URL(text)
+    return url.protocol === "http:" || url.protocol === "https:"
+  } catch {
+    return false
+  }
 }
 
 function scoreColor(score: number): "green" | "purple" | "orange" {
@@ -61,15 +132,25 @@ export function JobMatchModule() {
   const [company, setCompany] = useState("")
   const [rawDescription, setRawDescription] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [offerUrl, setOfferUrl] = useState("")
+  const [importNotice, setImportNotice] = useState<string | null>(null)
+  // Qué inició la última lectura de oferta: el enlace o un texto pegado (para mostrar
+  // el progreso y los mensajes junto al campo correcto).
+  const [extractMode, setExtractMode] = useState<"url" | "text" | null>(null)
+  const [undoState, setUndoState] = useState<{ jobTitle: string; company: string; rawDescription: string } | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const analysisController = useRef<AbortController | null>(null)
   const resultsQuery = useJobMatches()
   const analyze = useAnalyzeJobMatch()
-  const results = resultsQuery.data ?? []
+  const extract = useExtractJobOffer()
+  // "Mayor match": la lista se muestra ordenada por puntaje.
+  const results = [...(resultsQuery.data ?? [])].sort((a, b) => b.matchScore - a.matchScore)
   const analysisError = analyze.error instanceof ApiError ? analyze.error : undefined
-  const titleErrors = getFieldErrors(analysisError?.fieldErrors, "JobTitle")
-  const companyErrors = getFieldErrors(analysisError?.fieldErrors, "Company")
-  const descriptionErrors = getFieldErrors(analysisError?.fieldErrors, "RawDescription")
+  const titleErrors = getFieldErrors(analysisError?.fieldErrors, "JobTitle", "nombre")
+  const companyErrors = getFieldErrors(analysisError?.fieldErrors, "Company", "empresa")
+  const descriptionErrors = getFieldErrors(analysisError?.fieldErrors, "RawDescription", "ofertaTexto")
+  const descriptionIsUrl = isHttpUrl(rawDescription)
+  const busy = analyze.isPending || extract.isPending
   const selectedIdForQuery = selectedId ?? results[0]?.id ?? null
   const selectedQuery = useJobMatch(selectedIdForQuery)
   const selectedSummary = results.find((result) => result.id === selectedIdForQuery)
@@ -77,12 +158,72 @@ export function JobMatchModule() {
 
   useEffect(() => () => analysisController.current?.abort(), [])
 
+  const fillFromOffer = (offer: { jobTitle: string; company: string | null; rawDescription: string }) => {
+    setJobTitle(offer.jobTitle)
+    setCompany(offer.company ?? "")
+    setRawDescription(offer.rawDescription)
+  }
+
+  const importOffer = (url: string) => {
+    if (!isHttpUrl(url) || busy) return
+    setImportNotice(null)
+    setUndoState(null)
+    setExtractMode("url")
+    analyze.reset()
+    extract.mutate(
+      { url },
+      {
+        onSuccess: (offer) => {
+          fillFromOffer(offer)
+          setOfferUrl(offer.url)
+          const host = new URL(offer.url).hostname.replace(/^www\./, "")
+          setImportNotice(
+            `Oferta importada desde ${host}${offer.source === "ia" ? " con ayuda de Astro" : ""}. ` +
+              "Revisa los datos y corrige lo que haga falta antes de analizar.",
+          )
+        },
+      },
+    )
+  }
+
+  /** Ordena con Astro una oferta pegada desde cualquier página (menús, avisos y
+   *  otras ofertas incluidos): rellena título, empresa y deja solo la oferta. */
+  const tidyPastedText = (text: string) => {
+    if (busy || text.trim().length < MIN_DESCRIPTION_LENGTH || isHttpUrl(text)) return
+    const snapshot = { jobTitle, company, rawDescription: text }
+    setImportNotice(null)
+    setExtractMode("text")
+    analyze.reset()
+    extract.mutate(
+      { text },
+      {
+        onSuccess: (offer) => {
+          fillFromOffer({
+            // Si el usuario ya escribió un título o empresa, se respetan.
+            jobTitle: snapshot.jobTitle.trim() || offer.jobTitle,
+            company: snapshot.company.trim() || offer.company,
+            rawDescription: offer.rawDescription,
+          })
+          setUndoState(snapshot)
+          setImportNotice("Astro ordenó la oferta que pegaste. Revisa los datos antes de analizar.")
+        },
+      },
+    )
+  }
+
+  const undoTidy = () => {
+    if (!undoState) return
+    fillFromOffer(undoState)
+    setUndoState(null)
+    setImportNotice(null)
+  }
+
   const submitAnalysis = (request: AnalyzeJobRequest) => {
     if (
       analysisController.current ||
-      analyze.isPending ||
+      busy ||
       !request.jobTitle.trim() ||
-      request.rawDescription.trim().length < 100
+      request.rawDescription.trim().length < MIN_DESCRIPTION_LENGTH
     ) {
       return
     }
@@ -139,8 +280,48 @@ export function JobMatchModule() {
           </div>
           <div>
             <h3>Analiza una oferta laboral</h3>
-            <p>Completa los datos de la vacante y Astro comparará sus requisitos con tu perfil.</p>
+            <p>
+              Pega el enlace de la oferta o copia su texto desde cualquier sitio. Astro comparará
+              sus requisitos con tu perfil.
+            </p>
           </div>
+        </div>
+        <div className="jobmatch-import">
+          <label className="jobmatch-field">
+            <span>Importar desde un enlace (opcional)</span>
+            <div className="jobmatch-import-row">
+              <input
+                type="url"
+                inputMode="url"
+                value={offerUrl}
+                onChange={(event) => setOfferUrl(event.target.value)}
+                onKeyDown={(event) => {
+                  // Enter importa en vez de enviar el formulario de análisis.
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    importOffer(offerUrl)
+                  }
+                }}
+                placeholder="https://www.linkedin.com/jobs/view/..."
+                aria-label="Enlace de la oferta"
+                disabled={busy}
+              />
+              <Button
+                variant="secondary"
+                icon="download"
+                onClick={() => importOffer(offerUrl)}
+                disabled={!isHttpUrl(offerUrl) || busy}
+              >
+                {extract.isPending ? "Leyendo oferta..." : "Importar"}
+              </Button>
+            </div>
+            <span className="jobmatch-field-hint">
+              Funciona con LinkedIn, Computrabajo, GetOnBoard y muchos sitios de empresas. ¿Otro sitio
+              (Laborum, Indeed…)? Abre la oferta, selecciona todo (Ctrl+A), copia (Ctrl+C) y pégala
+              en la descripción: Astro la ordena sola.
+            </span>
+          </label>
+          {extractMode === "url" && <ExtractFeedback extract={extract} notice={importNotice} />}
         </div>
         <div className="jobmatch-fields">
           <label className="jobmatch-field">
@@ -150,12 +331,12 @@ export function JobMatchModule() {
               value={jobTitle}
               onChange={(event) => setJobTitle(event.target.value)}
               placeholder="Ej. Diseñador/a UX"
-              maxLength={300}
+              maxLength={fieldLimits.jobTitle}
               aria-label="Título del puesto"
               aria-invalid={titleErrors.length > 0}
               aria-describedby={titleErrors.length > 0 ? "job-title-errors" : undefined}
             />
-            <span className="jobmatch-char-count">{jobTitle.length} / 300</span>
+            <span className="jobmatch-char-count">{jobTitle.length} / {fieldLimits.jobTitle}</span>
             {titleErrors.map((message, index) => (
               <span
                 className="jobmatch-field-error"
@@ -172,12 +353,12 @@ export function JobMatchModule() {
               value={company}
               onChange={(event) => setCompany(event.target.value)}
               placeholder="Nombre de la empresa"
-              maxLength={200}
+              maxLength={fieldLimits.company}
               aria-label="Empresa"
               aria-invalid={companyErrors.length > 0}
               aria-describedby={companyErrors.length > 0 ? "job-company-errors" : undefined}
             />
-            <span className="jobmatch-char-count">{company.length} / 200</span>
+            <span className="jobmatch-char-count">{company.length} / {fieldLimits.company}</span>
             {companyErrors.map((message, index) => (
               <span
                 className="jobmatch-field-error"
@@ -194,21 +375,81 @@ export function JobMatchModule() {
           <textarea
             value={rawDescription}
             onChange={(event) => setRawDescription(event.target.value)}
-            placeholder="Pega aquí responsabilidades, requisitos y habilidades..."
+            onPaste={(event) => {
+              const pasted = event.clipboardData.getData("text/plain") || event.clipboardData.getData("text")
+              if (pasted.trim().length < AUTO_TIDY_MIN_PASTE || isHttpUrl(pasted)) return
+              // El texto se pega normalmente y además Astro lo ordena en segundo plano.
+              const field = event.currentTarget
+              const result =
+                field.value.slice(0, field.selectionStart) + pasted + field.value.slice(field.selectionEnd)
+              tidyPastedText(result)
+            }}
+            disabled={extract.isPending && extractMode === "text"}
+            placeholder="Pega aquí la oferta copiada desde cualquier página (puedes copiar la página completa con Ctrl+A y Ctrl+C). Astro la ordena sola y completa el título y la empresa."
             rows={5}
-            maxLength={10_000}
+            maxLength={fieldLimits.rawDescription}
             aria-label="Descripción de la oferta"
             aria-invalid={descriptionErrors.length > 0}
             aria-describedby={descriptionErrors.length > 0 ? "job-description-errors" : undefined}
           />
           <span
             className="jobmatch-char-count"
-            aria-label={`${rawDescription.trim().length} de 100 caracteres mínimos`}
+            aria-label={
+              rawDescription.trim().length <= MIN_DESCRIPTION_LENGTH
+                ? `${rawDescription.trim().length} de ${MIN_DESCRIPTION_LENGTH} caracteres mínimos`
+                : `${rawDescription.trim().length} de ${fieldLimits.rawDescription} caracteres máximos`
+            }
           >
-            {rawDescription.trim().length}/100
+            {rawDescription.trim().length <= MIN_DESCRIPTION_LENGTH
+              ? `${rawDescription.trim().length}/${MIN_DESCRIPTION_LENGTH}`
+              : `${rawDescription.trim().length} / ${fieldLimits.rawDescription}`}
           </span>
-          {rawDescription.trim().length < 100 && (
-            <span className="jobmatch-field-hint">Se necesitan al menos 100 caracteres para analizar.</span>
+          {descriptionIsUrl ? (
+            <span className="jobmatch-field-hint jobmatch-url-hint">
+              Pegaste un enlace.{" "}
+              <button
+                type="button"
+                className="jobmatch-link-button"
+                onClick={() => {
+                  const url = rawDescription.trim()
+                  setOfferUrl(url)
+                  setRawDescription("")
+                  importOffer(url)
+                }}
+                disabled={busy}
+              >
+                Importar la oferta desde este enlace
+              </button>
+            </span>
+          ) : rawDescription.trim().length < MIN_DESCRIPTION_LENGTH ? (
+            <span className="jobmatch-field-hint">
+              Se necesitan al menos {MIN_DESCRIPTION_LENGTH} caracteres para analizar.
+            </span>
+          ) : rawDescription.length >= fieldLimits.rawDescription ? (
+            <span className="jobmatch-field-hint">
+              Llegaste al máximo de {fieldLimits.rawDescription.toLocaleString("es-CL")} caracteres:
+              deja solo la descripción y los requisitos.
+            </span>
+          ) : !undoState && !importNotice && !extract.isPending ? (
+            <span className="jobmatch-field-hint">
+              ¿Pegaste la página completa o con texto de más?{" "}
+              <button
+                type="button"
+                className="jobmatch-link-button"
+                onClick={() => tidyPastedText(rawDescription)}
+                disabled={busy}
+              >
+                Ordenar con Astro
+              </button>
+            </span>
+          ) : null}
+          {extractMode === "text" && (
+            <ExtractFeedback
+              extract={extract}
+              notice={importNotice}
+              pendingLabel="Astro está ordenando la oferta que pegaste..."
+              onUndo={undoState ? undoTidy : undefined}
+            />
           )}
           {descriptionErrors.map((message, index) => (
             <span
@@ -229,8 +470,9 @@ export function JobMatchModule() {
             icon="arrow"
             disabled={
               !jobTitle.trim() ||
-              rawDescription.trim().length < 100 ||
-              analyze.isPending
+              rawDescription.trim().length < MIN_DESCRIPTION_LENGTH ||
+              descriptionIsUrl ||
+              busy
             }
           >
             {analyze.isPending ? "Analizando..." : "Analizar JobMatch"}
@@ -339,6 +581,9 @@ export function JobMatchModule() {
                       <small>{selected.matchedKeywords.length}</small>
                     </h3>
                     <div className="tags">
+                      {selected.matchedKeywords.length === 0 && (
+                        <span className="jobmatch-field-hint">Sin coincidencias detectadas con tu perfil.</span>
+                      )}
                       {selected.matchedKeywords.map((keyword) => (
                         <span className="tag tag-green" key={keyword}>
                           <Icon name="check" size={13} />
@@ -353,6 +598,9 @@ export function JobMatchModule() {
                       <small>{selected.missingKeywords.length}</small>
                     </h3>
                     <div className="tags">
+                      {selected.missingKeywords.length === 0 && (
+                        <span className="jobmatch-field-hint">Cumples todos los requisitos detectados.</span>
+                      )}
                       {selected.missingKeywords.map((keyword) => (
                         <span className="tag tag-red" key={keyword}>{keyword}</span>
                       ))}
