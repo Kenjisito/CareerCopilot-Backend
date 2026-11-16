@@ -44,6 +44,39 @@ afterEach(() => {
 })
 
 describe("JobMatchModule", () => {
+  it("keeps analysis details collapsed until requested on compact layouts", async () => {
+    const result = {
+      id: "match-1",
+      jobTitle: "Diseñador/a UX",
+      company: "Acme",
+      rawDescription: "Descripción de la oferta",
+      matchScore: 82,
+      matchedKeywords: ["Research"],
+      missingKeywords: ["Prototipado"],
+      astroAdvice: "Destaca tus proyectos.",
+      status: "Saved" as const,
+    }
+    vi.mocked(useJobMatches).mockReturnValue({
+      data: [result],
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useJobMatches>)
+    vi.mocked(useJobMatch).mockReturnValue({
+      data: result,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useJobMatch>)
+    const user = userEvent.setup()
+    render(<JobMatchModule />)
+
+    const toggle = screen.getByRole("button", { name: "Ver detalles del análisis" })
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    await user.click(toggle)
+
+    expect(screen.getByRole("button", { name: "Ocultar detalles" }).getAttribute("aria-expanded")).toBe("true")
+    expect(screen.getByText("Recomendación de Astro")).toBeTruthy()
+  })
+
   it("shows the description counter and disables submission below 100 characters", async () => {
     const user = userEvent.setup()
     render(<JobMatchModule />)

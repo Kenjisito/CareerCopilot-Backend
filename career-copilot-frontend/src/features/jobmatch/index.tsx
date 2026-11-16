@@ -61,6 +61,7 @@ export function JobMatchModule() {
   const [company, setCompany] = useState("")
   const [rawDescription, setRawDescription] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
   const analysisController = useRef<AbortController | null>(null)
   const resultsQuery = useJobMatches()
@@ -284,7 +285,10 @@ export function JobMatchModule() {
                 <button
                   key={result.id}
                   className={`job-row ${selectedIdForQuery === result.id ? "selected" : ""}`}
-                  onClick={() => setSelectedId(result.id)}
+                  onClick={() => {
+                    setSelectedId(result.id)
+                    setDetailsOpen(true)
+                  }}
                   type="button"
                 >
                   <div className={`company-logo logo-${color}`}>
@@ -306,8 +310,21 @@ export function JobMatchModule() {
               )
             })}
           </section>
+          <button
+            className="match-detail-toggle"
+            type="button"
+            aria-expanded={detailsOpen}
+            aria-controls="job-match-detail"
+            onClick={() => setDetailsOpen((open) => !open)}
+          >
+            {detailsOpen ? "Ocultar detalles" : "Ver detalles del análisis"}
+            <Icon name="chevron" size={16} />
+          </button>
           {selectedIdForQuery && (
-            <aside className="match-detail">
+            <aside
+              id="job-match-detail"
+              className={`match-detail ${detailsOpen ? "match-detail-open" : ""}`}
+            >
               {selectedQuery.isError ? (
                 <ErrorState
                   message={selectedQuery.error.message}

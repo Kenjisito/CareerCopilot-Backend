@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
 import type { ApplicationStatus, JobAnalysisResponse } from "@/features/jobmatch/types"
 import { useJobMatches } from "@/features/jobmatch/hooks"
 import { useProfile } from "@/features/profile"
@@ -180,10 +180,14 @@ export function Sidebar({
 }) {
   const profile = useProfile()
   return (
-    <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
+    <aside
+      id="dashboard-sidebar"
+      className={`sidebar ${open ? "sidebar-open" : ""}`}
+      aria-label="Navegación principal"
+    >
       <div className="sidebar-brand">
         <Brand light />
-        <button className="mobile-close" onClick={close}>
+        <button className="mobile-close" type="button" aria-label="Cerrar menú" onClick={close}>
           <Icon name="x" />
         </button>
       </div>
@@ -246,6 +250,15 @@ export function Dashboard({ onHome }: { onHome: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const profile = useProfile()
 
+  useEffect(() => {
+    if (!menuOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false)
+    }
+    window.addEventListener("keydown", closeOnEscape)
+    return () => window.removeEventListener("keydown", closeOnEscape)
+  }, [menuOpen])
+
   if (profile.isLoading) return <ModuleSkeleton />
 
   if (profile.isError || !profile.data) {
@@ -264,6 +277,14 @@ export function Dashboard({ onHome }: { onHome: () => void }) {
 
   return (
     <div className="dashboard">
+      {menuOpen && (
+        <button
+          className="sidebar-backdrop"
+          type="button"
+          aria-label="Cerrar menú de navegación"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
       <Sidebar
         active={active}
         setActive={setActive}
@@ -272,7 +293,14 @@ export function Dashboard({ onHome }: { onHome: () => void }) {
       />
       <div className="dashboard-shell">
         <header className="dashboard-header">
-          <button className="menu-button" onClick={() => setMenuOpen(true)}>
+          <button
+            className="menu-button"
+            type="button"
+            aria-label="Abrir menú de navegación"
+            aria-expanded={menuOpen}
+            aria-controls="dashboard-sidebar"
+            onClick={() => setMenuOpen(true)}
+          >
             <Icon name="menu" />
           </button>
           <div className="dashboard-header-title">
