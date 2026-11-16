@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,22 @@ from app.shared.rate_limit import ai_rate_limit
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
 
+def _with_ids(experiences: list[dict] | None) -> list[dict]:
+    """Garantiza que cada experiencia tenga un id único. Los perfiles guardados antes
+    de esta corrección no lo tenían: se les asigna uno estable por posición."""
+    result: list[dict] = []
+    seen: set[str] = set()
+    for index, experience in enumerate(experiences or []):
+        item = dict(experience)
+        exp_id = str(item.get("id") or "").strip()
+        if not exp_id or exp_id in seen:
+            exp_id = f"exp-{index}"
+        seen.add(exp_id)
+        item["id"] = exp_id
+        result.append(item)
+    return result
+
+
 def _response(profile: ProfileModel) -> ProfileResponse:
     return ProfileResponse(
         id=str(profile.usuario_id),
@@ -30,7 +48,7 @@ def _response(profile: ProfileModel) -> ProfileResponse:
         commune=profile.commune,
         professionalSummary=profile.professional_summary,
         skills=profile.skills or [],
-        experiences=profile.experiences or [],
+        experiences=_with_ids(profile.experiences),
         additionalSections=profile.additional_sections or {},
     )
 
@@ -72,7 +90,9 @@ async def upsert_profile(
     if not (keep_existing and not payload.skills):
         profile.skills = [skill.strip() for skill in payload.skills if skill.strip()]
     if not (keep_existing and not payload.experiences):
-        profile.experiences = [item.model_dump() for item in payload.experiences]
+        profile.experiences = [
+            {**item.model_dump(), "id": item.id or uuid4().hex} for item in payload.experiences
+        ]
     if not (keep_existing and not payload.additionalSections):
         profile.additional_sections = payload.additionalSections
 

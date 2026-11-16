@@ -1919,3 +1919,88 @@ select {
   .typing-indicator i,
   .typing-bubble i { animation: none; }
 }
+
+/* Job Match: importar oferta desde un enlace */
+.jobmatch-import {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 13px;
+  background: #fbfbfe;
+}
+.jobmatch-import-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.jobmatch-import-row input { flex: 1; min-width: 0; }
+.jobmatch-import-row .btn { white-space: nowrap; }
+.jobmatch-import-error,
+.jobmatch-import-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.jobmatch-import-error { color: var(--red); }
+.jobmatch-import-success { color: var(--green); }
+.jobmatch-import-success svg { flex-shrink: 0; margin-top: 1px; }
+.jobmatch-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--purple);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.jobmatch-link-button:disabled { opacity: .5; cursor: default; }
+/* Las recomendaciones de Astro llegan con saltos de línea y viñetas. */
+.astro-recommendation > p { white-space: pre-line; }
+@media (max-width: 640px) {
+  .jobmatch-import-row { flex-direction: column; }
+  .jobmatch-import-row .btn { width: 100%; }
+}
+
+/* ==========================================================================
+   Correcciones de diseño (van al final para ganar a las reglas anteriores)
+   ========================================================================== */
+
+/* Títulos grandes: el espaciado negativo juntaba las palabras ("Tucarrera"). */
+.hero h1 { letter-spacing: -.03em; }
+.section-heading h2, .feature-intro h2 { letter-spacing: -.022em; }
+.module-hero h1 { letter-spacing: -.025em; }
+
+/* Cartas: el bloque del título no debe heredar el display:flex pensado para los botones. */
+.letters-output .output-header > div:first-child { display: block; min-width: 0; }
+.letters-output .output-header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
+/* Legibilidad: textos que estaban a 9-11 px. */
+.input-title p,
+.jobmatch-field-hint,
+.jobmatch-import-error,
+.jobmatch-import-success { font-size: 12px; }
+.astro-recommendation > p { font-size: 13px; line-height: 1.65; }
+.sidebar-astro b, .sidebar-astro span, .sidebar-profile b { font-size: 11px; }
+.sidebar-profile span { font-size: 10.5px; }
+
+/* Responsive: estas pantallas tenían columnas fijas más abajo en este archivo
+   que pisaban las reglas móviles (contenido aplastado y desborde lateral). */
+@media (max-width: 1000px) {
+  .job-results-layout,
+  .cv-layout,
+  .coach-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .generator-layout { grid-template-columns: minmax(0, 1fr); }
+  /* Botones del encabezado (p. ej. Mi CV ATS) en cuadrícula de 2 en vez de 4 apretados. */
+  .module-hero-actions .btn { flex: 1 1 calc(50% - 5px); }
+  /* Pestañas del tracker: pueden pasar a otra línea en vez de salirse de la pantalla. */
+  .tracker-filters { flex-wrap: wrap; }
+  .tracker-filters button { flex: 1 1 auto; font-size: 11px; white-space: nowrap; }
+  .job-row .job-info { min-width: 0; }
+}

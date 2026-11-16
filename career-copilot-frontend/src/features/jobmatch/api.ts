@@ -3,14 +3,36 @@ import { ApiError } from "@/shared/lib/apiError"
 import type {
   ApplicationStatus,
   AnalyzeJobRequest,
+  ExtractedJobOffer,
   JobAnalysisResponse,
   UpdateJobStatusRequest,
 } from "@/features/jobmatch/types"
 
-const fieldLimits: Record<keyof AnalyzeJobRequest, number> = {
-  jobTitle: 300,
+// Deben coincidir con JobMatchPayload del backend (nombre ≤ 255, empresa ≤ 200)
+// y con el máximo que devuelve la extracción desde URL (15.000 caracteres).
+export const fieldLimits: Record<keyof AnalyzeJobRequest, number> = {
+  jobTitle: 255,
   company: 200,
-  rawDescription: 10_000,
+  rawDescription: 15_000,
+}
+
+export const MIN_DESCRIPTION_LENGTH = 100
+
+interface BackendJobExtract {
+  nombre: string
+  empresa: string | null
+  ofertaTexto: string
+  fuente: "datos-estructurados" | "ia" | "texto"
+  url: string
+}
+
+/** Mismo formato que guarda el backend (format_astro_advice): resumen y recomendaciones en viñetas. */
+export function formatAstroAdvice(resumen: string, recomendaciones: string[]): string {
+  const tips = recomendaciones
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => `• ${item}`)
+  return [resumen.trim(), tips.join("\n")].filter(Boolean).join("\n\n")
 }
 
 interface BackendJobMatch {
@@ -82,11 +104,11 @@ export function analyzeJobMatch(request: AnalyzeJobRequest, signal?: AbortSignal
     rawDescription: request.rawDescription.trim(),
   }
 
-  if (body.rawDescription.length < 100) {
+  if (body.rawDescription.length < MIN_DESCRIPTION_LENGTH) {
     throw new ApiError(
       400,
       "validation_error",
-      "La descripción debe tener al menos 100 caracteres.",
+      `La descripción debe tener al menos ${MIN_DESCRIPTION_LENGTH} caracteres.`,
       "rawDescription",
     )
   }
@@ -107,9 +129,38 @@ export function analyzeJobMatch(request: AnalyzeJobRequest, signal?: AbortSignal
     matchScore: result.scoreCompatibilidad,
     matchedKeywords: result.cumple,
     missingKeywords: result.noCumple,
-    astroAdvice: [result.resumen, ...result.recomendaciones].filter(Boolean).join("\n\n"),
+    astroAdvice: formatAstroAdvice(result.resumen, result.recomendaciones ?? []),
     status: "Saved" as const,
   }))
+}
+
+function toExtractedOffer(offer: BackendJobExtract): ExtractedJobOffer {
+  return {
+    jobTitle: offer.nombre.slice(0, fieldLimits.jobTitle),
+    company: offer.empresa ? offer.empresa.slice(0, fieldLimits.company) : null,
+    rawDescription: offer.ofertaTexto.slice(0, fieldLimits.rawDescription),
+    source: offer.fuente,
+    url: offer.url,
+  }
+}
+
+/** Lee la oferta desde la URL de un portal de empleo. No guarda nada. */
+export function extractJobOffer(url: string, signal?: AbortSignal): Promise<ExtractedJobOffer> {
+  return apiClient<BackendJobExtract>("/job-match/extract", {
+    method: "POST",
+    body: { url: url.trim() },
+    signal,
+  }).then(toExtractedOffer)
+}
+
+/** Ordena una oferta copiada y pegada desde cualquier página (con menús u otro
+ *  contenido alrededor): devuelve título, empresa y descripción limpia. */
+export function extractJobOfferFromText(text: string, signal?: AbortSignal): Promise<ExtractedJobOffer> {
+  return apiClient<BackendJobExtract>("/job-match/extract-text", {
+    method: "POST",
+    body: { texto: text },
+    signal,
+  }).then(toExtractedOffer)
 }
 
 export function updateApplicationStatus(

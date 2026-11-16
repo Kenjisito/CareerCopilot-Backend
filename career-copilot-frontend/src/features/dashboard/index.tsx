@@ -272,7 +272,13 @@ export function Dashboard({ onHome }: { onHome: () => void }) {
       />
       <div className="dashboard-shell">
         <header className="dashboard-header">
-          <button className="menu-button" onClick={() => setMenuOpen(true)}>
+          <button
+            className="menu-button"
+            type="button"
+            aria-label="Abrir menú de navegación"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+          >
             <Icon name="menu" />
           </button>
           <div className="dashboard-header-title">

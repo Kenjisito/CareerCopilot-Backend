@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ApplicationStatusModel, JobMatchModel, UsuarioModel
 from app.db.session import get_db
-from app.modules.job_match.extractor import extract_job_offer
-from app.modules.job_match.schemas import JobExtractPayload, JobExtractResult, JobMatchListItem, JobMatchPayload, JobMatchResult, JobStatusUpdate
+from app.modules.job_match.extractor import extract_job_offer, extract_job_offer_from_text
+from app.modules.job_match.schemas import JobExtractPayload, JobExtractResult, JobExtractTextPayload, JobMatchListItem, JobMatchPayload, JobMatchResult, JobStatusUpdate
 from app.modules.job_match.service import analyze_match
 from app.shared.rate_limit import ai_rate_limit
 from app.shared.dependencies import get_current_user
@@ -86,3 +86,10 @@ async def extract(payload: JobExtractPayload):
     """Lee la oferta laboral desde la URL de un portal de empleo. No guarda
     nada: el usuario revisa el texto y luego llama a /analyze."""
     return await extract_job_offer(str(payload.url))
+
+
+@router.post("/extract-text", response_model=JobExtractResult, dependencies=[Depends(ai_rate_limit)])
+async def extract_text(payload: JobExtractTextPayload):
+    """Ordena una oferta copiada y pegada desde cualquier página: devuelve título,
+    empresa y el texto de la oferta sin menús ni contenido ajeno. No guarda nada."""
+    return await extract_job_offer_from_text(payload.texto)

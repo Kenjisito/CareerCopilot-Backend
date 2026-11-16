@@ -18,6 +18,15 @@ MAX_CV_CHARS_FOR_AI = 6000
 MAX_OFFER_CHARS_FOR_AI = 6000
 
 
+def format_astro_advice(resumen: str, recomendaciones: list[str]) -> str:
+    """Texto que se guarda como consejo de Astro: el resumen y, debajo, las
+    recomendaciones como viñetas (así siguen visibles al volver a abrir el análisis)."""
+    parts = [resumen.strip()]
+    if recomendaciones:
+        parts.append("\n".join(f"• {item.strip()}" for item in recomendaciones if item.strip()))
+    return "\n\n".join(part for part in parts if part)
+
+
 async def analyze_match(db: AsyncSession, user_id: UUID, plan: str, payload: JobMatchPayload) -> JobMatchResult:
     month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     count = await db.scalar(select(func.count(JobMatchModel.id)).where(JobMatchModel.usuario_id == user_id, JobMatchModel.fecha >= month_start))
@@ -59,7 +68,7 @@ async def analyze_match(db: AsyncSession, user_id: UUID, plan: str, payload: Job
         job_match_id=match.id,
         status="Saved",
         company=payload.empresa,
-        astro_advice=analysis.resumen,
+        astro_advice=format_astro_advice(analysis.resumen, analysis.recomendaciones),
     ))
     await db.commit()
     return JobMatchResult(

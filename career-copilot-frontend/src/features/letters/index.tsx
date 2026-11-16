@@ -209,7 +209,9 @@ export function LettersModule({ setActive }: { setActive: (module: Module) => vo
             <div className="output-header">
               <div>
                 <h2>Carta de presentación</h2>
-                {selectedJob && <p>{selectedJob.jobTitle} · {selectedJob.company}</p>}
+                {selectedJob && (
+                  <p>{[selectedJob.jobTitle, selectedJob.company].filter(Boolean).join(" · ")}</p>
+                )}
               </div>
               {letter && (
                 <button

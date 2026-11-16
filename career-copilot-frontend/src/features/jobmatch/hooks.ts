@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   analyzeJobMatch,
+  extractJobOffer,
+  extractJobOfferFromText,
   getJobMatch,
   getJobMatches,
   updateApplicationStatus,
@@ -42,6 +44,20 @@ export function useAnalyzeJobMatch() {
         [result, ...(current ?? []).filter((item) => item.id !== result.id)],
       )
     },
+  })
+}
+
+export type ExtractJobOfferInput =
+  | { url: string; text?: undefined; signal?: AbortSignal }
+  | { text: string; url?: undefined; signal?: AbortSignal }
+
+/** Trae una oferta desde un enlace o desde un texto copiado de cualquier página. */
+export function useExtractJobOffer() {
+  return useMutation({
+    mutationFn: (input: ExtractJobOfferInput) =>
+      input.url !== undefined
+        ? extractJobOffer(input.url, input.signal)
+        : extractJobOfferFromText(input.text, input.signal),
   })
 }
 
