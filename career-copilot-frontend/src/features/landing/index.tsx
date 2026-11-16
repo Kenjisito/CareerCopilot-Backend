@@ -181,7 +181,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
           <a href="#privacidad">Privacidad</a>
           <a href="#ayuda">Ayuda</a>
         </div>
-        <small>© 2025 Career Copilot</small>
+        <small>© {new Date().getFullYear()} Career Copilot</small>
       </footer>
     </div>
   )
